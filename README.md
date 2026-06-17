@@ -36,11 +36,28 @@ npm run check
 
 ## Deploy Cloudflare
 
-`wrangler.toml` usa:
+Impostazioni consigliate per Cloudflare Pages collegato a GitHub:
 
-- install: `npm install --no-audit --no-fund`
-- build: `npm run build`
-- output: `dist`
+- Framework preset: `Vite`
+- Install command: `npm install --no-audit --no-fund`
+- Build command: `npm run build`
+- Build output directory: `dist`
+- Node version: `22.16.0` (pinzata anche in `.node-version`)
+
+Variabili di ambiente da configurare in Cloudflare Pages, sezione
+`Settings > Environment variables`, per Production e Preview:
+
+```sh
+VITE_SUPABASE_URL=
+VITE_SUPABASE_PUBLISHABLE_KEY=
+```
+
+Dopo averle aggiunte o modificate, avviare un nuovo deploy: Vite incorpora le
+variabili `VITE_*` durante la build.
+
+`wrangler.toml` espone `pages_build_output_dir = "./dist"` per i deploy Pages.
+`public/_redirects` contiene le riscritture delle route React verso
+`index.html`.
 
 ## Note tecniche
 
