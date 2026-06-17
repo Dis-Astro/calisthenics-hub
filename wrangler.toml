@@ -1,7 +1,6 @@
 name = "calisthenics-hub"
 compatibility_date = "2026-06-17"
 pages_build_output_dir = "./dist"
-pages_build_config = { build_command = "npm run build", destination_dir = "dist" }
 
 [vars]
 VITE_SUPABASE_URL = "https://dvjhcdmuuuwepayaatup.supabase.co"

@@ -55,10 +55,12 @@ VITE_SUPABASE_PUBLISHABLE_KEY=
 Dopo averle aggiunte o modificate, avviare un nuovo deploy: Vite incorpora le
 variabili `VITE_*` durante la build.
 
-`wrangler.toml` espone `pages_build_config.build_command = "npm run build"`,
-`pages_build_output_dir = "./dist"` e le variabili pubbliche Supabase usate da
-Vite durante la build. `public/_redirects` contiene le riscritture delle route
-React verso `index.html`.
+`wrangler.toml` espone `pages_build_output_dir = "./dist"` e le variabili
+pubbliche Supabase disponibili a Pages. Il comando di build va comunque
+impostato nel pannello Cloudflare Pages, in `Settings > Builds and deployments`,
+perche' Cloudflare non lo legge dal `wrangler.toml`.
+
+`public/_redirects` contiene le riscritture delle route React verso `index.html`.
 
 ## Note tecniche
 
