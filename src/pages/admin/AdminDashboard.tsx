@@ -28,12 +28,13 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     fetchStats();
-    // Backfill reminder appointments per schede esistenti — una sola volta per sessione
-    const KEY = "test_reminders_backfilled_v1";
+    // Backfill reminder appointments per schede/test esistenti — una sola volta per sessione
+    const KEY = "test_reminders_backfilled_v2";
     if (!sessionStorage.getItem(KEY)) {
       backfillTestReminders()
-        .then(({ created }) => {
-          if (created > 0) console.info(`[Reminder] Generati ${created} avvisi 'Prepara test'.`);
+        .then(({ created, updated }) => {
+          const changed = created + updated;
+          if (changed > 0) console.info(`[Reminder] Aggiornati ${changed} promemoria calendario.`);
           sessionStorage.setItem(KEY, "1");
         })
         .catch((err) => console.error("[Reminder] backfill failed", err));
