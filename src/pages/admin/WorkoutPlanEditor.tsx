@@ -38,24 +38,7 @@ import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { syncTestReminderAppointment } from "@/lib/testReminder";
-
-const COLOR_MAP: Record<string, string> = {
-  arancione: "#f97316", azzurro: "#38bdf8", verde: "#22c55e",
-  giallo: "#eab308", rosso: "#ef4444", blu: "#3b82f6", viola: "#a855f7",
-};
-
-function renderColoredText(value: string) {
-  const lines = value.split(/(\n)/);
-  return lines.map((line, lineIdx) => {
-    if (line === "\n") return <br key={`br-${lineIdx}`} />;
-    const tokens = line.split(/(\s+)/);
-    return tokens.map((token, i) => {
-      const color = COLOR_MAP[token.toLowerCase().replace(/[^a-zàèéìòù]/gi, "")];
-      if (color) return <span key={`${lineIdx}-${i}`} style={{ color, fontWeight: 700 }}>{token}</span>;
-      return <span key={`${lineIdx}-${i}`}>{token}</span>;
-    });
-  });
-}
+import { ColoredKeywordText } from "@/components/shared/ColoredKeywordText";
 
 // ─── Types ───
 interface DayExercise {
@@ -98,7 +81,8 @@ interface TestPlan {
 const WorkoutPlanEditor = () => {
   const { userId, planId } = useParams<{ userId: string; planId?: string }>();
   const [searchParams] = useSearchParams();
-  const requestedPlanType = searchParams.get("type") === "test" ? "test" : "workout_plan";
+  const planType = searchParams.get("type") || "workout_plan";
+  const isTest = planType === "test";
 
   const navigate = useNavigate();
   const { profile } = useAuth();
@@ -106,9 +90,6 @@ const WorkoutPlanEditor = () => {
   const isMobile = useIsMobile();
 
   const isEditing = !!planId;
-  const [planType, setPlanType] = useState(requestedPlanType);
-  const isTest = planType === "test";
-  const reminderTitle = isTest ? "Prepara scheda" : "Prepara test";
 
   // Editor state
   const [loading, setLoading] = useState(true);
@@ -138,16 +119,6 @@ const WorkoutPlanEditor = () => {
   useEffect(() => {
     if (userId && profile?.user_id) loadAll();
   }, [userId, planId, profile?.user_id]);
-
-  useEffect(() => {
-    if (!isEditing) {
-      setPlanType(requestedPlanType);
-      setFormData(prev => ({
-        ...prev,
-        duration_weeks: requestedPlanType === "test" && prev.duration_weeks === "4" ? "1" : prev.duration_weeks,
-      }));
-    }
-  }, [requestedPlanType, isEditing]);
 
   const loadAll = async () => {
     setLoading(true);
@@ -179,7 +150,6 @@ const WorkoutPlanEditor = () => {
 
     if (planRes.data) {
       const p = planRes.data as any;
-      setPlanType(p.plan_type === "test" ? "test" : "workout_plan");
       setFormData({
         name: p.name, description: p.description || "", coach_notes: p.coach_notes || "",
         status: p.status || (p.is_active ? "attiva" : "conclusa"), end_date: p.end_date || "",
@@ -505,11 +475,8 @@ const WorkoutPlanEditor = () => {
   const toggleFeedbackExercise = (id: string) => {
     setOpenFeedbackExercises(prev => {
       const s = new Set(prev);
-      if (s.has(id)) {
-        s.delete(id);
-      } else {
-        s.add(id);
-      }
+      if (s.has(id)) s.delete(id);
+      else s.add(id);
       return s;
     });
   };
@@ -567,7 +534,7 @@ const WorkoutPlanEditor = () => {
                       <div className={`px-3 py-2 flex items-center justify-between text-left ${hasFeedback ? 'hover:bg-muted/30 cursor-pointer' : ''}`}>
                         <div className="flex items-center gap-2">
                           <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium flex-shrink-0">{idx + 1}</span>
-                          <p className="text-xs whitespace-pre-wrap">{ex.exercise_name ? renderColoredText(ex.exercise_name) : "Esercizio"}</p>
+                          <p className="text-xs whitespace-pre-wrap">{ex.exercise_name ? <ColoredKeywordText text={ex.exercise_name} /> : "Esercizio"}</p>
                         </div>
                         {hasFeedback && (
                           <div className="flex items-center gap-1">
@@ -670,7 +637,7 @@ const WorkoutPlanEditor = () => {
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-muted-foreground text-xs">{idx + 1}.</span>
                         <p className="text-xs truncate whitespace-pre-wrap">
-                          {ex.exercise_name ? renderColoredText(ex.exercise_name) : "Esercizio"}
+                          {ex.exercise_name ? <ColoredKeywordText text={ex.exercise_name} /> : "Esercizio"}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
@@ -764,30 +731,32 @@ const WorkoutPlanEditor = () => {
           placeholder={isTest ? "Note tecniche interne..." : "Note che il cliente vedrà..."} rows={2} />
       </div>
 
-      {/* Promemoria calendario */}
-      <div className="space-y-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
-        <div className="flex items-center justify-between">
-          <Label className="flex items-center gap-2">
-            <Bell className="w-4 h-4 text-primary" />
-            Promemoria "{reminderTitle}" sul calendario
-          </Label>
-          <span className="text-sm font-display tracking-wider">
-            {formData.test_reminder_days === 0 ? "Off" : `${formData.test_reminder_days} gg`}
-          </span>
+      {/* Promemoria "Prepara Test" sul calendario */}
+      {!isTest && (
+        <div className="space-y-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+          <div className="flex items-center justify-between">
+            <Label className="flex items-center gap-2">
+              <Bell className="w-4 h-4 text-primary" />
+              Promemoria "Prepara test" sul calendario
+            </Label>
+            <span className="text-sm font-display tracking-wider">
+              {formData.test_reminder_days === 0 ? "Off" : `${formData.test_reminder_days} gg`}
+            </span>
+          </div>
+          <Slider
+            min={0}
+            max={14}
+            step={1}
+            value={[formData.test_reminder_days]}
+            onValueChange={([v]) => setFormData({ ...formData, test_reminder_days: v })}
+          />
+          <p className="text-xs text-muted-foreground">
+            {formData.test_reminder_days === 0
+              ? "Nessun promemoria automatico verrà creato sul calendario."
+              : `Verrà creato un appuntamento "Prepara test" sul tuo calendario ${formData.test_reminder_days} giorni prima della scadenza.`}
+          </p>
         </div>
-        <Slider
-          min={0}
-          max={14}
-          step={1}
-          value={[formData.test_reminder_days]}
-          onValueChange={([v]) => setFormData({ ...formData, test_reminder_days: v })}
-        />
-        <p className="text-xs text-muted-foreground">
-          {formData.test_reminder_days === 0
-            ? "Nessun promemoria automatico verrà creato sul calendario."
-            : `Verrà creato un appuntamento "${reminderTitle}" sul tuo calendario ${formData.test_reminder_days} giorni prima della scadenza.`}
-        </p>
-      </div>
+      )}
 
       {/* Days + Exercises */}
       <div className="space-y-4">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -29,8 +29,7 @@ import {
   Edit2,
   Save,
   X,
-  Users,
-  Archive,
+  Users
 } from "lucide-react";
 import {
   AlertDialog,
@@ -65,62 +64,6 @@ import { it } from "date-fns/locale";
 
 type UserRole = Database["public"]["Enums"]["user_role"];
 type SubscriptionStatus = Database["public"]["Enums"]["subscription_status"];
-type PaymentInsert = Database["public"]["Tables"]["payments"]["Insert"];
-
-const statusLabels: Record<SubscriptionStatus, string> = {
-  attivo: "Attivo",
-  scaduto: "Scaduto",
-  sospeso: "Sospeso",
-  cancellato: "Cancellato",
-  archiviato: "Archiviato",
-  chiuso: "Chiuso",
-  terminato: "Terminato",
-};
-
-const closedSubscriptionStatuses: SubscriptionStatus[] = ["archiviato", "chiuso", "terminato", "cancellato"];
-
-const isArchivedSubscription = (subscription: Pick<Subscription, "status">) =>
-  closedSubscriptionStatuses.includes(subscription.status);
-
-const isOperationalSubscription = (subscription: Pick<Subscription, "status">) =>
-  !isArchivedSubscription(subscription);
-
-const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
-const LEGACY_BILLING_MONTH_RE = /\[mese-saldato:(\d{4}-(?:0[1-9]|1[0-2]))\]/i;
-
-const getCurrentMonthKey = () => format(new Date(), "yyyy-MM");
-
-const normalizeMonthKey = (value?: string | null) =>
-  value && MONTH_KEY_RE.test(value) ? value : getCurrentMonthKey();
-
-const parseDateAtStartOfDay = (value?: string | null) => {
-  const datePart = value?.slice(0, 10);
-  const date = datePart ? new Date(`${datePart}T00:00:00`) : new Date();
-  return Number.isNaN(date.getTime()) ? new Date() : date;
-};
-
-const monthStartDate = (monthKey: string) =>
-  parseDateAtStartOfDay(`${normalizeMonthKey(monthKey)}-01`);
-
-const dateToMonthKey = (dateValue?: string | null) =>
-  format(parseDateAtStartOfDay(dateValue), "yyyy-MM");
-
-const monthKeyToDateString = (monthKey: string) => `${normalizeMonthKey(monthKey)}-01`;
-
-const formatMonthKey = (monthKey: string) =>
-  format(monthStartDate(monthKey), "MMMM yyyy", { locale: it });
-
-const compareMonthKeys = (a: string, b: string) =>
-  monthStartDate(a).getTime() - monthStartDate(b).getTime();
-
-const getLegacyBillingMonthKey = (notes?: string | null) =>
-  notes?.match(LEGACY_BILLING_MONTH_RE)?.[1] || null;
-
-const getPaymentBillingMonthKey = (payment: Pick<Payment, "billing_month" | "payment_date" | "notes">) =>
-  payment.billing_month ? dateToMonthKey(payment.billing_month) : getLegacyBillingMonthKey(payment.notes) || dateToMonthKey(payment.payment_date);
-
-const getSubscriptionDueMonthKey = (subscription: Subscription) =>
-  dateToMonthKey(subscription.end_date);
 
 interface Profile {
   id: string;
@@ -151,8 +94,6 @@ interface Subscription {
   start_date: string;
   end_date: string;
   status: SubscriptionStatus;
-  archived_at: string | null;
-  archived_reason: string | null;
   notes: string | null;
   membership_plans?: MembershipPlan;
 }
@@ -160,12 +101,10 @@ interface Subscription {
 interface Payment {
   id: string;
   amount: number;
-  billing_month?: string | null;
   payment_date: string;
   method: string;
   status: string;
   notes: string | null;
-  subscription_id: string | null;
 }
 
 interface WorkoutPlan {
@@ -193,7 +132,7 @@ const roleLabels: Record<UserRole, string> = {
   cliente_palestra: "Cliente Palestra",
   cliente_coaching: "Cliente Coaching",
   cliente_corso: "Cliente Corso",
-  segretaria: "Segretaria"
+  segretaria: "Segreteria"
 };
 
 const ClientDetailPage = () => {
@@ -220,7 +159,7 @@ const ClientDetailPage = () => {
 
   // New payment dialog
   const [isNewPayOpen, setIsNewPayOpen] = useState(false);
-  const [newPayForm, setNewPayForm] = useState({ subscription_id: "", amount: "", billing_month: getCurrentMonthKey(), method: "contanti", notes: "" });
+  const [newPayForm, setNewPayForm] = useState({ subscription_id: "", amount: "", method: "contanti", notes: "" });
   const [creatingPay, setCreatingPay] = useState(false);
 
   // Edit subscription end date
@@ -269,40 +208,7 @@ const ClientDetailPage = () => {
     setLoading(false);
   };
 
-  const getSubscriptionPaymentCount = (subId: string) =>
-    payments.filter(payment => payment.subscription_id === subId).length;
-
-  const handleArchiveSubscription = async (subId: string) => {
-    const { error } = await supabase
-      .from("subscriptions")
-      .update({
-        status: "archiviato",
-        archived_at: format(new Date(), "yyyy-MM-dd"),
-        archived_reason: "Archiviato manualmente",
-      })
-      .eq("id", subId);
-
-    if (error) {
-      toast({ title: "Errore", description: "Impossibile archiviare l'abbonamento", variant: "destructive" });
-    } else {
-      toast({
-        title: "Abbonamento archiviato",
-        description: "Non generera' piu' avvisi, ma i pagamenti restano nello storico.",
-      });
-      fetchClientData();
-    }
-  };
-
   const handleDeleteSubscription = async (subId: string) => {
-    if (getSubscriptionPaymentCount(subId) > 0) {
-      toast({
-        title: "Abbonamento non eliminabile",
-        description: "Questo abbonamento ha pagamenti associati. Non puo' essere eliminato senza perdere lo storico. Puoi archiviarlo per rimuoverlo dagli avvisi.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     const { error } = await supabase.from("subscriptions").delete().eq("id", subId);
     if (error) {
       toast({ title: "Errore", description: "Impossibile eliminare l'abbonamento", variant: "destructive" });
@@ -346,17 +252,6 @@ const ClientDetailPage = () => {
     setCreatingSub(false);
   };
 
-  const openPaymentForSubscription = (sub: Subscription) => {
-    setNewPayForm({
-      subscription_id: sub.id,
-      amount: sub.membership_plans?.price?.toString() || "",
-      billing_month: getSubscriptionDueMonthKey(sub),
-      method: "contanti",
-      notes: "",
-    });
-    setIsNewPayOpen(true);
-  };
-
   const handleCreatePayment = async () => {
     if (!newPayForm.subscription_id || !newPayForm.amount) {
       toast({ title: "Errore", description: "Seleziona abbonamento e importo", variant: "destructive" });
@@ -366,44 +261,20 @@ const ClientDetailPage = () => {
     const sub = subscriptions.find(s => s.id === newPayForm.subscription_id);
     if (!sub) { setCreatingPay(false); return; }
 
-    const amount = parseFloat(newPayForm.amount);
-    if (!amount || amount <= 0) {
-      toast({ title: "Errore", description: "Importo non valido", variant: "destructive" });
-      setCreatingPay(false);
-      return;
-    }
-    const billingMonthKey = normalizeMonthKey(newPayForm.billing_month);
-
-    const paymentPayload: PaymentInsert = {
-      subscription_id: newPayForm.subscription_id,
+    const { error } = await supabase.from("payments").insert({
       user_id: userId!,
-      amount,
-      payment_date: format(new Date(), "yyyy-MM-dd"),
-      billing_month: monthKeyToDateString(billingMonthKey),
+      subscription_id: newPayForm.subscription_id,
+      amount: parseFloat(newPayForm.amount),
       method: newPayForm.method,
       status: "completato",
-      notes: newPayForm.notes || null,
-      recorded_by: null,
-    };
-
-    let { error } = await supabase.from("payments").insert(paymentPayload);
-
-    if (error && /billing_month|schema cache|column/i.test(error.message || "")) {
-      const { billing_month: _billingMonth, ...legacyPayload } = paymentPayload;
-      const legacyPaymentPayload: PaymentInsert = {
-        ...legacyPayload,
-        notes: [legacyPayload.notes?.trim(), `[mese-saldato:${billingMonthKey}]`].filter(Boolean).join("\n"),
-      };
-      ({ error } = await supabase
-        .from("payments")
-        .insert(legacyPaymentPayload));
-    }
+      notes: newPayForm.notes || null
+    });
 
     if (error) {
-      toast({ title: "Errore", description: error.message || "Impossibile registrare il pagamento", variant: "destructive" });
+      toast({ title: "Errore", description: "Impossibile registrare il pagamento", variant: "destructive" });
     } else {
-      toast({ title: "Pagamento registrato!", description: `Incasso registrato per ${formatMonthKey(billingMonthKey)}` });
-      setNewPayForm({ subscription_id: "", amount: "", billing_month: getCurrentMonthKey(), method: "contanti", notes: "" });
+      toast({ title: "Pagamento registrato!" });
+      setNewPayForm({ subscription_id: "", amount: "", method: "contanti", notes: "" });
       setIsNewPayOpen(false);
       fetchClientData();
     }
@@ -424,53 +295,15 @@ const ClientDetailPage = () => {
     setSavingEndDate(false);
   };
 
-
-  const handleDeletePayment = async (payId: string) => {
-    const { error } = await supabase.from("payments").delete().eq("id", payId);
-    if (error) {
-      toast({ title: "Errore", description: "Impossibile eliminare il pagamento", variant: "destructive" });
-    } else {
-      toast({ title: "Pagamento eliminato" });
-      fetchClientData();
-    }
-  };
-
-
   const getSubscriptionStatus = (sub: Subscription) => {
-    if (isArchivedSubscription(sub)) {
-      return { label: statusLabels[sub.status], variant: "outline" as const, icon: Archive };
-    }
-
     const daysLeft = differenceInDays(new Date(sub.end_date), new Date());
     if (isPast(new Date(sub.end_date))) return { label: "Scaduto", variant: "destructive" as const, icon: AlertTriangle };
     if (daysLeft <= 7) return { label: `${daysLeft}g rimasti`, variant: "secondary" as const, icon: Clock };
     return { label: "Attivo", variant: "default" as const, icon: CheckCircle };
   };
 
-  const activeSubscription = subscriptions.find(s => isOperationalSubscription(s) && s.status === "attivo" && !isPast(new Date(s.end_date)));
+  const activeSubscription = subscriptions.find(s => s.status === "attivo" && !isPast(new Date(s.end_date)));
   const totalPayments = payments.filter(p => p.status === "completato").reduce((sum, p) => sum + p.amount, 0);
-  const paymentMonthOptions = useMemo(() => {
-    const keys = new Set<string>([
-      getCurrentMonthKey(),
-      normalizeMonthKey(newPayForm.billing_month),
-      ...subscriptions.flatMap(sub => [dateToMonthKey(sub.start_date), dateToMonthKey(sub.end_date)]),
-      ...payments.map(getPaymentBillingMonthKey),
-    ]);
-
-    const sortedKeys = Array.from(keys).filter(key => MONTH_KEY_RE.test(key)).sort(compareMonthKeys);
-    const first = sortedKeys[0] || getCurrentMonthKey();
-    const last = sortedKeys[sortedKeys.length - 1] || getCurrentMonthKey();
-    const from = addMonths(monthStartDate(first), -2);
-    const to = addMonths(monthStartDate(last), 6);
-    const options: { value: string; label: string }[] = [];
-
-    for (let cursor = from; cursor <= to && options.length < 96; cursor = addMonths(cursor, 1)) {
-      const value = format(cursor, "yyyy-MM");
-      options.push({ value, label: formatMonthKey(value) });
-    }
-
-    return options;
-  }, [newPayForm.billing_month, subscriptions, payments]);
 
   if (loading) {
     return (
@@ -563,8 +396,6 @@ const ClientDetailPage = () => {
                 subscriptions.map(sub => {
                   const status = getSubscriptionStatus(sub);
                   const isEditingThis = editingEndDateSubId === sub.id;
-                  const paymentCount = getSubscriptionPaymentCount(sub.id);
-                  const archived = isArchivedSubscription(sub);
                   return (
                     <div key={sub.id} className={`p-3 rounded-lg border ${sub === activeSubscription ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'}`}>
                       <div className="flex items-start justify-between mb-2">
@@ -576,42 +407,6 @@ const ClientDetailPage = () => {
                           </Badge>
                         </div>
                         <div className="flex gap-1">
-                          {!archived && (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="h-7 gap-1 px-2 text-xs"
-                              title="Registra incasso"
-                              onClick={() => openPaymentForSubscription(sub)}
-                            >
-                              <Euro className="w-3 h-3" />
-                              Incassa
-                            </Button>
-                          )}
-                          {!archived && (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" title="Archivia abbonamento">
-                                  <Archive className="w-3 h-3" />
-                                  Archivia
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Archiviare questo abbonamento?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    L'abbonamento non generera' piu' avvisi, ma i pagamenti resteranno nello storico.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Annulla</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleArchiveSubscription(sub.id)}>
-                                    Archivia abbonamento
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -633,7 +428,7 @@ const ClientDetailPage = () => {
                             <AlertDialogContent>
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Eliminare l'abbonamento?</AlertDialogTitle>
-                                <AlertDialogDescription>{paymentCount > 0 ? "Questo abbonamento ha pagamenti associati. Non puo' essere eliminato senza perdere lo storico. Puoi archiviarlo per rimuoverlo dagli avvisi." : "Questa azione non puo' essere annullata. Usala solo per errori di inserimento."}</AlertDialogDescription>
+                                <AlertDialogDescription>Questa azione non può essere annullata.</AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Annulla</AlertDialogCancel>
@@ -717,34 +512,14 @@ const ClientDetailPage = () => {
               ) : (
                 <div className="space-y-2">
                   {payments.map(pay => (
-                    <div key={pay.id} className="flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm">
-                      <div className="min-w-0 flex-1">
+                    <div key={pay.id} className="flex items-center justify-between p-2 rounded bg-muted/30 text-sm">
+                      <div>
                         <p className="font-medium">€{pay.amount}</p>
-                        <p className="text-xs text-muted-foreground truncate">Incasso {format(new Date(pay.payment_date), "dd/MM/yyyy")} - {pay.method}</p>
-                        <p className="text-xs text-muted-foreground truncate">Mese saldato: {formatMonthKey(getPaymentBillingMonthKey(pay))}</p>
+                        <p className="text-xs text-muted-foreground">{format(new Date(pay.payment_date), "dd/MM/yyyy")} · {pay.method}</p>
                       </div>
                       <Badge variant={pay.status === "completato" ? "default" : "secondary"} className="text-xs">
                         {pay.status}
                       </Badge>
-                      <div className="flex gap-1">
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="w-6 h-6 text-destructive" title="Elimina pagamento">
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Eliminare il pagamento?</AlertDialogTitle>
-                              <AlertDialogDescription>L'operazione è irreversibile. Da usare in caso di errore di registrazione.</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Annulla</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeletePayment(pay.id)} className="bg-destructive text-destructive-foreground">Elimina</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -947,37 +722,12 @@ const ClientDetailPage = () => {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Abbonamento *</Label>
-              <Select value={newPayForm.subscription_id} onValueChange={v => {
-                const sub = subscriptions.find(s => s.id === v);
-                setNewPayForm({
-                  ...newPayForm,
-                  subscription_id: v,
-                  amount: sub?.membership_plans?.price?.toString() || newPayForm.amount,
-                  billing_month: sub ? getSubscriptionDueMonthKey(sub) : newPayForm.billing_month,
-                });
-              }}>
+              <Select value={newPayForm.subscription_id} onValueChange={v => setNewPayForm({ ...newPayForm, subscription_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Seleziona abbonamento" /></SelectTrigger>
                 <SelectContent>
                   {subscriptions.map(s => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.membership_plans?.name} - {statusLabels[s.status]} - scad. {format(new Date(s.end_date), "dd/MM/yyyy")}
-                      {s.archived_at ? ` - chiuso il ${format(new Date(s.archived_at), "dd/MM/yyyy")}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Mese saldato *</Label>
-              <Select
-                value={normalizeMonthKey(newPayForm.billing_month)}
-                onValueChange={v => setNewPayForm({ ...newPayForm, billing_month: normalizeMonthKey(v) })}
-              >
-                <SelectTrigger><SelectValue placeholder="Seleziona mese" /></SelectTrigger>
-                <SelectContent>
-                  {paymentMonthOptions.map(option => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                      {s.membership_plans?.name} — scad. {format(new Date(s.end_date), "dd/MM/yyyy")}
                     </SelectItem>
                   ))}
                 </SelectContent>

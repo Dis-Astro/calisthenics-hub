@@ -52,7 +52,7 @@ const planTypeLabels: Record<UserRole, string> = {
   cliente_palestra: "Cliente Palestra",
   cliente_coaching: "Cliente Coaching",
   cliente_corso: "Cliente Corso",
-  segretaria: "Segretaria"
+  segretaria: "Segreteria"
 };
 
 const MembershipPlanManagement = () => {
