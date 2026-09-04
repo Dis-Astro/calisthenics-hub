@@ -23,7 +23,6 @@ import {
   X
 } from "lucide-react";
 import AdminLayout from "@/components/admin/AdminLayout";
-import ClientLink from "@/components/admin/ClientLink";
 import LightningRating from "@/components/coaching/LightningRating";
 import { format, parseISO } from "date-fns";
 import { it } from "date-fns/locale";
@@ -89,38 +88,45 @@ interface WeekFeedback {
 
 const PAGE_SIZE = 1000;
 const IN_CHUNK_SIZE = 150;
+const READ_RETRY_DELAYS_MS = [350, 900];
+
+async function withReadRetry<T>(operation: () => PromiseLike<T>, signal: AbortSignal): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= READ_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (signal.aborted) throw error;
+      lastError = error;
+      const delay = READ_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) break;
+      await new Promise((resolve) => window.setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
 
 const hasFeedback = (completion: { client_notes: string | null; difficulty_rating: number | null }) =>
   Boolean(completion.client_notes?.trim()) || (completion.difficulty_rating || 0) > 0;
 
-const toDateOnly = (value: string) => {
-  const date = new Date(`${value}T00:00:00`);
-  date.setHours(0, 0, 0, 0);
-  return date;
-};
-
-const getPlanTotalWeeks = (startDate: string, endDate: string) => {
-  const start = toDateOnly(startDate);
-  const end = toDateOnly(endDate);
-  const diffDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  return Math.max(1, Math.ceil(diffDays / 7));
-};
-
-const isValidPlanWeek = (weekNumber: number | null, plan: { start_date: string; end_date: string }) =>
-  Boolean(weekNumber && weekNumber >= 1 && weekNumber <= getPlanTotalWeeks(plan.start_date, plan.end_date));
-
-async function fetchAllFeedbackCompletions() {
+async function fetchAllFeedbackCompletions(signal: AbortSignal) {
   const rows: any[] = [];
   let from = 0;
 
   while (true) {
-    const { data, error } = await supabase
-      .from("workout_completions")
-      .select("id, client_id, workout_plan_exercise_id, completed_at, client_notes, difficulty_rating, set_number")
-      .order("completed_at", { ascending: false })
-      .range(from, from + PAGE_SIZE - 1);
-
-    if (error) throw error;
+    const { data } = await withReadRetry(async () => {
+      const result = await supabase
+        .from("workout_completions")
+        .select("id, client_id, workout_plan_exercise_id, completed_at, client_notes, difficulty_rating, set_number")
+        .or("client_notes.not.is.null,difficulty_rating.gt.0")
+        .order("completed_at", { ascending: false })
+        .range(from, from + PAGE_SIZE - 1)
+        .abortSignal(signal);
+      if (result.error) throw result.error;
+      return result;
+    }, signal);
     const batch = data || [];
     rows.push(...batch.filter(hasFeedback));
     if (batch.length < PAGE_SIZE) break;
@@ -130,17 +136,21 @@ async function fetchAllFeedbackCompletions() {
   return rows;
 }
 
-async function fetchInChunks(table: "workout_plan_exercises" | "workout_plans" | "profiles", select: string, column: string, ids: string[]) {
+async function fetchInChunks(table: "workout_plan_exercises" | "workout_plans" | "profiles", select: string, column: string, ids: string[], signal: AbortSignal) {
   const uniqueIds = [...new Set(ids)].filter(Boolean);
   const rows: any[] = [];
 
   for (let i = 0; i < uniqueIds.length; i += IN_CHUNK_SIZE) {
     const chunk = uniqueIds.slice(i, i + IN_CHUNK_SIZE);
-    const { data, error } = await (supabase.from(table) as any)
-      .select(select)
-      .in(column, chunk);
-
-    if (error) throw error;
+    const result = await withReadRetry(async () => {
+      const response = await (supabase.from(table) as any)
+        .select(select)
+        .in(column, chunk)
+        .abortSignal(signal);
+      if (response.error) throw response.error;
+      return response;
+    }, signal);
+    const { data } = result as { data: any[] | null; error: Error | null };
     rows.push(...(data || []));
   }
 
@@ -170,13 +180,15 @@ const AdminReportsPage = () => {
   }, [clients, searchQuery]);
 
   useEffect(() => {
-    fetchClients();
+    const controller = new AbortController();
+    fetchClients(controller.signal);
+    return () => controller.abort();
   }, []);
 
-  const fetchClients = async () => {
+  const fetchClients = async (signal: AbortSignal) => {
     setLoading(true);
     try {
-      const completions = await fetchAllFeedbackCompletions();
+      const completions = await fetchAllFeedbackCompletions(signal);
 
       if (completions.length === 0) {
         setClients([]);
@@ -187,20 +199,21 @@ const AdminReportsPage = () => {
         "workout_plan_exercises",
         "id, workout_plan_id",
         "id",
-        completions.map(c => c.workout_plan_exercise_id)
+        completions.map(c => c.workout_plan_exercise_id),
+        signal
       );
       const plans = (await fetchInChunks(
         "workout_plans",
-        "id, name, client_id, coach_id, start_date, end_date, deleted_at",
+        "id, name, client_id, coach_id, deleted_at",
         "id",
-        exercises.map(e => e.workout_plan_id)
+        exercises.map(e => e.workout_plan_id),
+        signal
       )).filter(p => !p.deleted_at);
       const clientIds = [...new Set(plans.map(p => p.client_id))];
-      const profiles = await fetchInChunks("profiles", "user_id, first_name, last_name", "user_id", clientIds);
+      const profiles = await fetchInChunks("profiles", "user_id, first_name, last_name", "user_id", clientIds, signal);
 
     const userMap = new Map(profiles?.map(p => [p.user_id, `${p.first_name} ${p.last_name}`]) || []);
     const exercisePlanMap = new Map(exercises.map(e => [e.id, e.workout_plan_id]));
-    const planMap = new Map(plans.map(p => [p.id, p]));
 
     const clientMap = new Map<string, ClientSummary>();
     const clientPlanSets = new Map<string, Set<string>>();
@@ -209,9 +222,8 @@ const AdminReportsPage = () => {
       if (!c.client_notes && (!c.difficulty_rating || c.difficulty_rating <= 0)) return;
       const planId = exercisePlanMap.get(c.workout_plan_exercise_id);
       if (!planId) return;
-      const plan = planMap.get(planId);
+      const plan = plans.find(p => p.id === planId);
       if (!plan) return;
-      if (!isValidPlanWeek(c.set_number, plan)) return;
 
       if (!clientMap.has(c.client_id)) {
         clientMap.set(c.client_id, {
@@ -239,11 +251,13 @@ const AdminReportsPage = () => {
 
     setClients(Array.from(clientMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
     } catch (error) {
+      if (signal.aborted) return;
       console.error("Errore caricamento feedback clienti", error);
       toast({ title: "Errore", description: "Impossibile caricare i feedback clienti", variant: "destructive" });
       setClients([]);
+    } finally {
+      if (!signal.aborted) setLoading(false);
     }
-    setLoading(false);
   };
 
   const fetchClientPlans = async (clientId: string) => {
@@ -303,8 +317,7 @@ const AdminReportsPage = () => {
         planExercises.forEach(ex => {
           const day = ex.day_of_week || 1;
           if (!dayMap.has(day)) dayMap.set(day, []);
-          const weeks = (completionsByExercise.get(ex.id) || [])
-            .filter(week => isValidPlanWeek(week.week_number, plan));
+          const weeks = completionsByExercise.get(ex.id) || [];
           if (weeks.length > 0) {
             dayMap.get(day)!.push({
               id: ex.id,
@@ -422,9 +435,7 @@ const AdminReportsPage = () => {
                     <User className="w-5 h-5 text-primary" />
                   </div>
                   <div>
-                    <p className="font-medium">
-                      <ClientLink userId={client.id}>{client.name}</ClientLink>
-                    </p>
+                    <p className="font-medium">{client.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {client.feedbackCount} feedback in {client.planCount} schede • ultimo: {format(parseISO(client.lastDate), "dd MMM yyyy", { locale: it })}
                     </p>
@@ -444,9 +455,7 @@ const AdminReportsPage = () => {
             <ArrowLeft className="w-4 h-4" />
             Torna all'elenco clienti
           </button>
-          <h2 className="text-lg font-display tracking-wider">
-            <ClientLink userId={selectedClientId}>{selectedClientName}</ClientLink>
-          </h2>
+          <h2 className="text-lg font-display tracking-wider">{selectedClientName}</h2>
 
           {loadingPlans ? (
             <div className="flex items-center justify-center py-12">

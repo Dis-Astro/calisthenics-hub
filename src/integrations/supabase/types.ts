@@ -216,6 +216,82 @@ export type Database = {
           },
         ]
       }
+      course_fixed_assignments: {
+        Row: {
+          course_id: string
+          created_at: string
+          day_of_week: number
+          id: string
+          is_active: boolean
+          start_time: string
+          user_id: string
+        }
+        Insert: {
+          course_id: string
+          created_at?: string
+          day_of_week: number
+          id?: string
+          is_active?: boolean
+          start_time: string
+          user_id: string
+        }
+        Update: {
+          course_id?: string
+          created_at?: string
+          day_of_week?: number
+          id?: string
+          is_active?: boolean
+          start_time?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_fixed_assignments_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      course_bookings: {
+        Row: {
+          booking_type: string
+          course_session_id: string
+          created_at: string
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          booking_type: string
+          course_session_id: string
+          created_at?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          booking_type?: string
+          course_session_id?: string
+          created_at?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_bookings_course_session_id_fkey"
+            columns: ["course_session_id"]
+            isOneToOne: false
+            referencedRelation: "course_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       course_sessions: {
         Row: {
           cancellation_reason: string | null
@@ -224,6 +300,10 @@ export type Database = {
           end_time: string
           id: string
           is_cancelled: boolean
+          confirmation_deadline_hours: number
+          fixed_places: number
+          floating_places: number | null
+          max_participants: number | null
           start_time: string
         }
         Insert: {
@@ -233,6 +313,10 @@ export type Database = {
           end_time: string
           id?: string
           is_cancelled?: boolean
+          confirmation_deadline_hours?: number
+          fixed_places?: number
+          floating_places?: number | null
+          max_participants?: number | null
           start_time: string
         }
         Update: {
@@ -242,6 +326,10 @@ export type Database = {
           end_time?: string
           id?: string
           is_cancelled?: boolean
+          confirmation_deadline_hours?: number
+          fixed_places?: number
+          floating_places?: number | null
+          max_participants?: number | null
           start_time?: string
         }
         Relationships: [
@@ -643,7 +731,6 @@ export type Database = {
       payments: {
         Row: {
           amount: number
-          billing_month: string
           created_at: string
           id: string
           method: string
@@ -657,7 +744,6 @@ export type Database = {
         }
         Insert: {
           amount: number
-          billing_month?: string
           created_at?: string
           id?: string
           method?: string
@@ -671,7 +757,6 @@ export type Database = {
         }
         Update: {
           amount?: number
-          billing_month?: string
           created_at?: string
           id?: string
           method?: string
@@ -743,8 +828,6 @@ export type Database = {
       }
       subscriptions: {
         Row: {
-          archived_at: string | null
-          archived_reason: string | null
           created_at: string
           end_date: string
           id: string
@@ -756,8 +839,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          archived_at?: string | null
-          archived_reason?: string | null
           created_at?: string
           end_date: string
           id?: string
@@ -769,8 +850,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          archived_at?: string | null
-          archived_reason?: string | null
           created_at?: string
           end_date?: string
           id?: string
@@ -790,6 +869,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      timer_audio_cues: {
+        Row: {
+          created_at: string
+          created_by: string
+          duration_seconds: number | null
+          event_type: string
+          id: string
+          is_active: boolean
+          mime_type: string
+          storage_path: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          duration_seconds?: number | null
+          event_type: string
+          id?: string
+          is_active?: boolean
+          mime_type: string
+          storage_path: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          duration_seconds?: number | null
+          event_type?: string
+          id?: string
+          is_active?: boolean
+          mime_type?: string
+          storage_path?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       workout_completions: {
         Row: {
@@ -973,7 +1091,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      can_manage_billing: { Args: { user_uuid: string }; Returns: boolean }
       can_view_client_data: {
         Args: { client_uuid: string; viewer_uuid: string }
         Returns: boolean
@@ -988,21 +1105,19 @@ export type Database = {
       }
       is_admin: { Args: { user_uuid: string }; Returns: boolean }
       is_coach: { Args: { user_uuid: string }; Returns: boolean }
-      is_segretaria: { Args: { user_uuid: string }; Returns: boolean }
       is_staff: { Args: { user_uuid: string }; Returns: boolean }
-      register_subscription_payment: {
-        Args: {
-          p_amount: number
-          p_billing_month: string
-          p_method: string
-          p_notes?: string | null
-          p_recorded_by?: string | null
-          p_subscription_id: string
-          p_user_id: string
-        }
+      course_day_group: { Args: { local_day: number }; Returns: number }
+      manage_course_booking: {
+        Args: { p_action: string; p_session_id: string }
+        Returns: Json
+      }
+      get_course_session_availability: {
+        Args: { p_from: string; p_to: string }
         Returns: {
-          new_end_date: string
-          payment_id: string
+          booked: number
+          fixed_booked: number
+          floating_booked: number
+          session_id: string
         }[]
       }
     }
@@ -1010,14 +1125,7 @@ export type Database = {
       error_report_status: "aperta" | "in_lavorazione" | "risolta" | "chiusa"
       expense_category: "fissa" | "variabile"
       payment_status: "completato" | "in_attesa" | "fallito" | "rimborsato"
-      subscription_status:
-        | "attivo"
-        | "scaduto"
-        | "sospeso"
-        | "cancellato"
-        | "archiviato"
-        | "chiuso"
-        | "terminato"
+      subscription_status: "attivo" | "scaduto" | "sospeso" | "cancellato"
       user_role:
         | "admin"
         | "coach"
@@ -1156,15 +1264,7 @@ export const Constants = {
       error_report_status: ["aperta", "in_lavorazione", "risolta", "chiusa"],
       expense_category: ["fissa", "variabile"],
       payment_status: ["completato", "in_attesa", "fallito", "rimborsato"],
-      subscription_status: [
-        "attivo",
-        "scaduto",
-        "sospeso",
-        "cancellato",
-        "archiviato",
-        "chiuso",
-        "terminato",
-      ],
+      subscription_status: ["attivo", "scaduto", "sospeso", "cancellato"],
       user_role: [
         "admin",
         "coach",

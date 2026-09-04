@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import AdminLayout from "@/components/admin/AdminLayout";
-import ClientLink from "@/components/admin/ClientLink";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -89,6 +88,10 @@ interface CourseSession {
   start_time: string;
   end_time: string;
   is_cancelled: boolean;
+  max_participants: number | null;
+  fixed_places: number;
+  floating_places: number | null;
+  confirmation_deadline_hours: number;
   course?: Course;
 }
 
@@ -189,7 +192,11 @@ const CalendarManagement = () => {
   const [courseSessionEndTime, setCourseSessionEndTime] = useState("10:00");
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [newCourseSession, setNewCourseSession] = useState({
-    course_id: ""
+    course_id: "",
+    max_participants: "10",
+    fixed_places: "7",
+    floating_places: "3",
+    confirmation_deadline_hours: "6",
   });
 
   const weekDays = [
@@ -236,12 +243,7 @@ const CalendarManagement = () => {
       supabase.from("profiles").select("*").in("role", ["cliente_palestra", "cliente_coaching", "cliente_corso"]),
       supabase.from("courses").select("*").eq("is_active", true),
       (supabase.from("workout_plans").select("id, name, client_id, end_date").gte("end_date", startRange).lte("end_date", endRange).eq("is_active", true) as any).is("deleted_at", null),
-      supabase
-        .from("subscriptions")
-        .select("id, user_id, end_date, status, plan_id, membership_plans(name)")
-        .in("status", ["attivo", "scaduto", "sospeso"])
-        .gte("end_date", startRange)
-        .lte("end_date", endRange),
+      supabase.from("subscriptions").select("id, user_id, end_date, status, plan_id, membership_plans(name)").gte("end_date", startRange).lte("end_date", endRange),
       supabase.from("lesson_packages").select("id, user_id, remaining_lessons, total_lessons").gt("remaining_lessons", 0)
     ]);
 
@@ -257,17 +259,14 @@ const CalendarManagement = () => {
     if (coursesRes.data) setCourses(coursesRes.data);
     if (workoutRes.data) setWorkoutDeadlines(workoutRes.data);
     if (subsRes.data) {
-      const clientIds = new Set((clientsRes.data || []).map((c: any) => c.user_id));
-      setSubscriptionDeadlines(subsRes.data
-        .filter((s: any) => clientIds.has(s.user_id))
-        .map((s: any) => ({
-          id: s.id,
-          user_id: s.user_id,
-          end_date: s.end_date,
-          status: s.status,
-          plan_name: s.membership_plans?.name || 'Piano',
-          plan_id: s.plan_id
-        })));
+      setSubscriptionDeadlines(subsRes.data.map((s: any) => ({
+        id: s.id,
+        user_id: s.user_id,
+        end_date: s.end_date,
+        status: s.status,
+        plan_name: s.membership_plans?.name || 'Piano',
+        plan_id: s.plan_id
+      })));
     }
     if (packagesRes.data) setLessonPackages(packagesRes.data as unknown as LessonPackage[]);
 
@@ -285,89 +284,28 @@ const CalendarManagement = () => {
     const pkg = getClientPackage(clientId);
     if (!pkg) return;
 
-    const { data: existingUsage } = await supabase
-      .from("lesson_usage_log")
-      .select("id")
-      .eq("appointment_id", appointmentId)
-      .maybeSingle();
-
-    if (existingUsage) return;
-
-    const { data: currentPkg, error: packageError } = await supabase
-      .from("lesson_packages")
-      .select("id, remaining_lessons, total_lessons")
-      .eq("id", pkg.id)
-      .single();
-
-    if (packageError || !currentPkg || currentPkg.remaining_lessons <= 0) {
-      toast({ title: "Pacchetto non scalato", description: "Nessuna lezione disponibile per questo cliente", variant: "destructive" });
-      return;
-    }
-
-    const nextRemaining = currentPkg.remaining_lessons - 1;
+    // Decrement remaining_lessons
     const { error: updateError } = await supabase
       .from("lesson_packages")
-      .update({ remaining_lessons: nextRemaining })
-      .eq("id", currentPkg.id)
-      .eq("remaining_lessons", currentPkg.remaining_lessons);
+      .update({ remaining_lessons: pkg.remaining_lessons - 1 })
+      .eq("id", pkg.id);
 
     if (updateError) {
       console.error("Error decrementing lesson package:", updateError);
-      toast({ title: "Pacchetto non scalato", description: "Riprova dopo aver aggiornato il calendario", variant: "destructive" });
       return;
     }
 
-    const { error: logError } = await supabase.from("lesson_usage_log").insert({
-      package_id: currentPkg.id,
+    // Log the usage
+    await supabase.from("lesson_usage_log").insert({
+      package_id: pkg.id,
       appointment_id: appointmentId,
       created_by: profile?.user_id
     });
 
-    if (logError) {
-      await supabase
-        .from("lesson_packages")
-        .update({ remaining_lessons: currentPkg.remaining_lessons })
-        .eq("id", currentPkg.id);
-      toast({ title: "Pacchetto non scalato", description: "Impossibile registrare l'utilizzo della lezione", variant: "destructive" });
-      return;
-    }
-
     toast({
       title: "Lezione scalata",
-      description: `Pacchetto: ${nextRemaining}/${currentPkg.total_lessons} lezioni rimanenti`
+      description: `Pacchetto: ${pkg.remaining_lessons - 1}/${pkg.total_lessons} lezioni rimanenti`
     });
-  };
-
-  const restoreLessonPackageForAppointment = async (appointmentId: string) => {
-    const { data: usage, error: usageError } = await supabase
-      .from("lesson_usage_log")
-      .select("id, package_id")
-      .eq("appointment_id", appointmentId)
-      .maybeSingle();
-
-    if (usageError || !usage) return;
-
-    const { data: pkg, error: packageError } = await supabase
-      .from("lesson_packages")
-      .select("id, remaining_lessons, total_lessons")
-      .eq("id", usage.package_id)
-      .single();
-
-    if (packageError || !pkg) return;
-
-    const restoredRemaining = Math.min(pkg.remaining_lessons + 1, pkg.total_lessons);
-    const { error: updateError } = await supabase
-      .from("lesson_packages")
-      .update({ remaining_lessons: restoredRemaining })
-      .eq("id", pkg.id);
-
-    if (updateError) {
-      toast({ title: "Lezione non ripristinata", description: "Controlla il pacchetto del cliente", variant: "destructive" });
-      return;
-    }
-
-    await supabase.from("lesson_usage_log").delete().eq("id", usage.id);
-    toast({ title: "Lezione ripristinata", description: `Pacchetto: ${restoredRemaining}/${pkg.total_lessons} lezioni rimanenti` });
   };
 
   // --- Click on day to create appointment (pre-fill date) ---
@@ -507,7 +445,6 @@ const CalendarManagement = () => {
     if (error) {
       toast({ title: "Errore", description: "Impossibile eliminare l'appuntamento", variant: "destructive" });
     } else {
-      await restoreLessonPackageForAppointment(deleteAppointmentId);
       toast({ title: "Eliminato", description: "Appuntamento eliminato" });
       fetchData();
     }
@@ -517,6 +454,15 @@ const CalendarManagement = () => {
   const createCourseSession = async () => {
     if (!newCourseSession.course_id || selectedDays.length === 0) {
       toast({ title: "Errore", description: "Seleziona un corso e almeno un giorno della settimana", variant: "destructive" });
+      return;
+    }
+
+    const maximum = Number.parseInt(newCourseSession.max_participants, 10);
+    const fixedPlaces = Number.parseInt(newCourseSession.fixed_places, 10) || 0;
+    const floatingPlaces = Number.parseInt(newCourseSession.floating_places, 10) || 0;
+    const deadlineHours = Number.parseInt(newCourseSession.confirmation_deadline_hours, 10) || 6;
+    if (!Number.isFinite(maximum) || maximum < 1 || fixedPlaces < 0 || floatingPlaces < 0 || fixedPlaces + floatingPlaces > maximum || deadlineHours < 1 || deadlineHours > 72) {
+      toast({ title: "Dati non validi", description: "Controlla capienza e termine di conferma.", variant: "destructive" });
       return;
     }
 
@@ -544,7 +490,11 @@ const CalendarManagement = () => {
         sessionsToCreate.push({
           course_id: newCourseSession.course_id,
           start_time: startDateTime.toISOString(),
-          end_time: endDateTime.toISOString()
+          end_time: endDateTime.toISOString(),
+          max_participants: maximum,
+          fixed_places: fixedPlaces,
+          floating_places: floatingPlaces,
+          confirmation_deadline_hours: deadlineHours,
         });
         
         currentDateIter = addDays(currentDateIter, 7);
@@ -559,7 +509,7 @@ const CalendarManagement = () => {
       const daysText = selectedDays.map(d => weekDays.find(w => w.value === d)?.short).join(", ");
       toast({ title: "Successo", description: `Create ${sessionsToCreate.length} sessioni per ${daysText} (1 anno)` });
       setIsCourseSessionDialogOpen(false);
-      setNewCourseSession({ course_id: "" });
+      setNewCourseSession({ course_id: "", max_participants: "10", fixed_places: "7", floating_places: "3", confirmation_deadline_hours: "6" });
       setSelectedDays([]);
       setCourseSessionStartTime("09:00");
       setCourseSessionEndTime("10:00");
@@ -695,12 +645,6 @@ const CalendarManagement = () => {
     if (error) {
       toast({ title: "Errore", description: "Impossibile aggiornare l'appuntamento", variant: "destructive" });
     } else {
-      if ((editingAppointment.client_id || "") !== (editForm.client_id || "")) {
-        await restoreLessonPackageForAppointment(editingAppointment.id);
-        if (editForm.client_id) {
-          await decrementLessonPackage(editForm.client_id, editingAppointment.id);
-        }
-      }
       toast({ title: "Aggiornato", description: "Appuntamento aggiornato" });
       setIsEditDialogOpen(false);
       setEditingAppointment(null);
@@ -921,7 +865,10 @@ const CalendarManagement = () => {
                 <div className="grid gap-4 py-4">
                   <div className="space-y-2">
                     <Label>Corso *</Label>
-                    <Select value={newCourseSession.course_id} onValueChange={(v) => setNewCourseSession({ ...newCourseSession, course_id: v })}>
+                    <Select value={newCourseSession.course_id} onValueChange={(v) => {
+                      const courseMaximum = courses.find((course) => course.id === v)?.max_participants ?? 10;
+                      setNewCourseSession({ course_id: v, max_participants: String(courseMaximum), fixed_places: "0", floating_places: String(courseMaximum), confirmation_deadline_hours: "6" });
+                    }}>
                       <SelectTrigger><SelectValue placeholder="Seleziona corso" /></SelectTrigger>
                       <SelectContent>
                         {courses.map(c => (
@@ -929,6 +876,26 @@ const CalendarManagement = () => {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 rounded-xl border border-border p-3">
+                    <div className="space-y-2">
+                      <Label>Capienza</Label>
+                      <Input type="number" min="1" inputMode="numeric" value={newCourseSession.max_participants} onChange={(e) => setNewCourseSession({ ...newCourseSession, max_participants: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Fissi</Label>
+                      <Input type="number" min="0" inputMode="numeric" value={newCourseSession.fixed_places} onChange={(e) => setNewCourseSession({ ...newCourseSession, fixed_places: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Occasionali</Label>
+                      <Input type="number" min="0" inputMode="numeric" value={newCourseSession.floating_places} onChange={(e) => setNewCourseSession({ ...newCourseSession, floating_places: e.target.value })} />
+                    </div>
+                    <p className="col-span-3 text-xs text-muted-foreground">Fissi + occasionali deve essere minore o uguale alla capienza.</p>
+                  </div>
+                  <div className="space-y-2 rounded-xl border border-border p-3">
+                    <Label>Chiusura conferme</Label>
+                    <div className="flex items-center gap-2"><Input className="w-24" type="number" min="1" max="72" inputMode="numeric" value={newCourseSession.confirmation_deadline_hours} onChange={(e) => setNewCourseSession({ ...newCourseSession, confirmation_deadline_hours: e.target.value })} /><span className="text-sm text-muted-foreground">ore prima della lezione</span></div>
                   </div>
                   
                   <div className="space-y-2">
@@ -1073,9 +1040,7 @@ const CalendarManagement = () => {
                               </div>
                               {clientName && (
                                 <div className="text-[10px] opacity-80 truncate mt-0.5 ml-4">
-                                  <ClientLink userId={apt.client_id} className="font-normal text-white/90 hover:text-white">
-                                    {clientName}
-                                  </ClientLink>
+                                  {clientName}
                                 </div>
                               )}
                               <button
@@ -1121,13 +1086,7 @@ const CalendarManagement = () => {
                               onClick={(e) => handleDeadlineClick(deadline, e)}
                             >
                               <Dumbbell className="w-3 h-3 flex-shrink-0" />
-                              <span className="truncate">
-                                Scad. {clientName ? (
-                                  <ClientLink userId={deadline.client_id} className="font-normal text-destructive hover:text-destructive">
-                                    {clientName}
-                                  </ClientLink>
-                                ) : deadline.name}
-                              </span>
+                              <span className="truncate">Scad. {clientName || deadline.name}</span>
                             </div>
                           );
                         })}
@@ -1142,13 +1101,7 @@ const CalendarManagement = () => {
                               onClick={(e) => e.stopPropagation()}
                             >
                               <CreditCard className="w-3 h-3 flex-shrink-0" />
-                              <span className="truncate">
-                                Abb. {clientName ? (
-                                  <ClientLink userId={sub.user_id} className="font-normal text-orange-700 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-400">
-                                    {clientName}
-                                  </ClientLink>
-                                ) : sub.plan_name}
-                              </span>
+                              <span className="truncate">Abb. {clientName || sub.plan_name}</span>
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleRenewSubscription(sub); }}
                                 className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-orange-600/30 rounded p-0.5"
@@ -1266,13 +1219,7 @@ const CalendarManagement = () => {
                             onClick={(e) => handleDeadlineClick(deadline, e)}
                           >
                             <Dumbbell className="w-2 h-2" />
-                            <span className="truncate">
-                              Scad. {clientName ? (
-                                <ClientLink userId={deadline.client_id} className="font-normal text-destructive hover:text-destructive">
-                                  {clientName}
-                                </ClientLink>
-                              ) : deadline.name}
-                            </span>
+                            Scad. {clientName || deadline.name}
                           </div>
                         );
                       })}
@@ -1288,13 +1235,7 @@ const CalendarManagement = () => {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <CreditCard className="w-2 h-2" />
-                            <span className="truncate">
-                              Abb. {clientName ? (
-                                <ClientLink userId={sub.user_id} className="font-normal text-orange-700 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-400">
-                                  {clientName}
-                                </ClientLink>
-                              ) : sub.plan_name}
-                            </span>
+                            Abb. {clientName || sub.plan_name}
                             <button
                               onClick={(e) => { e.stopPropagation(); handleRenewSubscription(sub); }}
                               className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100"
@@ -1383,14 +1324,7 @@ const CalendarManagement = () => {
                         <div className="text-xs text-muted-foreground">
                           {format(parseISO(apt.start_time), "HH:mm")} - {format(parseISO(apt.end_time), "HH:mm")}
                         </div>
-                        {clientName && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            <User className="w-3 h-3 inline mr-1" />
-                            <ClientLink userId={apt.client_id} className="font-normal">
-                              {clientName}
-                            </ClientLink>
-                          </div>
-                        )}
+                        {clientName && <div className="text-xs text-muted-foreground mt-1"><User className="w-3 h-3 inline mr-1" />{clientName}</div>}
                         {apt.location && <div className="text-xs text-muted-foreground mt-0.5">📍 {apt.location}</div>}
                       </div>
                       <div className="flex gap-1">
@@ -1415,7 +1349,13 @@ const CalendarManagement = () => {
                       <div className="text-xs text-muted-foreground">
                         {format(parseISO(session.start_time), "HH:mm")} - {format(parseISO(session.end_time), "HH:mm")}
                       </div>
-                      <Badge variant="secondary" className="mt-1 text-[10px]">Corso</Badge>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <Badge variant="secondary" className="text-[10px]">Corso</Badge>
+                        <Badge variant="outline" className="text-[10px]">Capienza {session.max_participants ?? session.course?.max_participants ?? "∞"}</Badge>
+                        <Badge variant="outline" className="text-[10px]">Fissi {session.fixed_places ?? 0}</Badge>
+                        <Badge variant="outline" className="text-[10px]">Occasionali {session.floating_places ?? 0}</Badge>
+                        <Badge variant="outline" className="text-[10px]">Conferme −{session.confirmation_deadline_hours ?? 6}h</Badge>
+                      </div>
                     </div>
                     <Button size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => setDeleteCourseSessionId(session.id)}>
                       <Trash2 className="w-3 h-3" />
@@ -1431,13 +1371,7 @@ const CalendarManagement = () => {
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">Scadenza Scheda</div>
                         <div className="text-xs text-muted-foreground">{deadline.name}</div>
-                        {clientName && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            <ClientLink userId={deadline.client_id} className="font-normal">
-                              {clientName}
-                            </ClientLink>
-                          </div>
-                        )}
+                        {clientName && <div className="text-xs text-muted-foreground mt-1">{clientName}</div>}
                       </div>
                       <ExternalLink className="w-4 h-4 text-muted-foreground mt-1" />
                     </div>
@@ -1452,13 +1386,7 @@ const CalendarManagement = () => {
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">Scadenza Abbonamento</div>
                         <div className="text-xs text-muted-foreground">{sub.plan_name}</div>
-                        {clientName && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            <ClientLink userId={sub.user_id} className="font-normal">
-                              {clientName}
-                            </ClientLink>
-                          </div>
-                        )}
+                        {clientName && <div className="text-xs text-muted-foreground mt-1">{clientName}</div>}
                       </div>
                       <Button 
                         size="sm" 

@@ -1,123 +1,151 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { format, isAfter, isBefore } from "date-fns";
+import { it } from "date-fns/locale";
+import { Archive, CalendarDays, ChevronRight, Dumbbell, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { getOfflineCache, setOfflineCache } from "@/lib/offlineSync";
 import ClientLayout from "@/components/coaching/ClientLayout";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Dumbbell, Calendar, ChevronRight, Archive } from "lucide-react";
-import { format, isPast, isWithinInterval } from "date-fns";
-import { it } from "date-fns/locale";
+import { Card, CardContent } from "@/components/ui/card";
 
-interface PlanRow {
+interface ArchivedPlan {
   id: string;
   name: string;
   description: string | null;
   start_date: string;
   end_date: string;
-  status?: string;
-  plan_type?: string;
+  status: string | null;
+  plan_type: string | null;
 }
 
 const WorkoutArchivePage = () => {
   const { profile } = useAuth();
-  const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [plans, setPlans] = useState<ArchivedPlan[]>([]);
+  const [fromCache, setFromCache] = useState(false);
 
   useEffect(() => {
-    const load = async () => {
+    const fetchPlans = async () => {
       if (!profile?.user_id) return;
-      const { data } = await supabase
-        .from("workout_plans")
-        .select("id, name, description, start_date, end_date, status, plan_type")
-        .eq("client_id", profile.user_id)
-        .is("deleted_at" as any, null)
-        .order("end_date", { ascending: false });
-      setPlans((data as any) || []);
-      setLoading(false);
+      setLoading(true);
+      const cacheKey = `workout-archive:${profile.user_id}`;
+      const cached = await getOfflineCache<ArchivedPlan[]>(cacheKey);
+
+      if (cached) {
+        setPlans(cached.value);
+        setFromCache(true);
+      }
+
+      if (!navigator.onLine) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("workout_plans")
+          .select("id, name, description, start_date, end_date, status, plan_type")
+          .eq("client_id", profile.user_id)
+          .is("deleted_at" as any, null)
+          .order("end_date", { ascending: false });
+
+        if (error) throw error;
+        const normalized = (data || []) as ArchivedPlan[];
+        setPlans(normalized);
+        setFromCache(false);
+        await setOfflineCache(cacheKey, normalized);
+      } catch {
+        if (!cached) setPlans([]);
+      } finally {
+        setLoading(false);
+      }
     };
-    load();
+
+    void fetchPlans();
   }, [profile?.user_id]);
 
-  const today = new Date();
+  const getPlanState = (plan: ArchivedPlan) => {
+    const now = new Date();
+    const start = new Date(plan.start_date);
+    const end = new Date(plan.end_date);
+
+    if (plan.status === "in_pausa") return { label: "In pausa", variant: "secondary" as const };
+    if (isBefore(now, start)) return { label: "Programmata", variant: "outline" as const };
+    if (isAfter(now, end)) return { label: "Conclusa", variant: "outline" as const };
+    return { label: "Attiva", variant: "default" as const };
+  };
 
   return (
-    <ClientLayout title="ARCHIVIO SCHEDE">
-      <div className="space-y-4">
-        <div className="bg-gradient-to-br from-card via-card to-primary/5 rounded-lg p-6 border border-border">
-          <div className="flex items-center gap-2 text-primary mb-2">
-            <Archive className="w-5 h-5" />
-            <span className="text-sm font-medium tracking-wider uppercase">Storico</span>
-          </div>
-          <h2 className="font-display text-2xl tracking-wider">Tutte le tue schede e test</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Consulta in sola lettura tutte le schede passate. I tuoi commenti restano visibili.
-          </p>
+    <ClientLayout title="ARCHIVIO">
+      {loading && !plans.length ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
+      ) : (
+        <div className="mx-auto max-w-2xl space-y-5">
+          <section>
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Archive className="h-6 w-6" />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-3xl tracking-wide">LE TUE SCHEDE</h2>
+              {fromCache && <Badge variant="outline">Disponibili offline</Badge>}
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Consulta le schede attive e quelle concluse. Le indicazioni del coach restano sempre disponibili.
+            </p>
+          </section>
 
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
-        ) : plans.length === 0 ? (
-          <div className="text-center py-20">
-            <Dumbbell className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
-            <p className="text-muted-foreground">Nessuna scheda nello storico</p>
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {plans.map((p) => {
-              const start = new Date(p.start_date);
-              const end = new Date(p.end_date);
-              const isCurrent =
-                isWithinInterval(today, { start, end }) && p.status === "attiva";
-              const expired = isPast(end);
-              return (
-                <Link key={p.id} to={`/coaching/scheda?planId=${p.id}`}>
-                  <Card className="hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10 transition-all cursor-pointer">
-                    <CardContent className="p-5 flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                        {p.plan_type === "test" ? (
-                          <span className="text-xl">🧪</span>
-                        ) : (
-                          <Dumbbell className="w-6 h-6 text-primary" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h3 className="font-display text-lg tracking-wide truncate">{p.name}</h3>
-                          {p.plan_type === "test" && (
-                            <Badge variant="outline" className="border-orange-500/40 text-orange-600 dark:text-orange-400">TEST</Badge>
-                          )}
-                          {isCurrent && (
-                            <Badge className="bg-primary/20 text-primary border-primary/30">In corso</Badge>
-                          )}
-                          {expired && !isCurrent && (
-                            <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30">Scaduta</Badge>
-                          )}
-                          {p.status === "in_pausa" && (
-                            <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-700 border-yellow-500/30">In pausa</Badge>
-                          )}
-                          {p.status === "sospesa" && (
-                            <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30">Sospesa</Badge>
-                          )}
+          {plans.length === 0 ? (
+            <Card className="rounded-3xl border-dashed">
+              <CardContent className="py-12 text-center">
+                <Dumbbell className="mx-auto mb-4 h-12 w-12 text-muted-foreground/40" />
+                <p className="font-medium">Nessuna scheda disponibile</p>
+                <p className="mt-1 text-sm text-muted-foreground">Le schede assegnate compariranno qui.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {plans.map((plan) => {
+                const state = getPlanState(plan);
+                return (
+                  <Link key={plan.id} to={`/coaching/scheda?planId=${plan.id}`} className="block">
+                    <Card className="rounded-2xl transition active:scale-[0.99]">
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-4">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                            <Dumbbell className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="break-words font-semibold">{plan.name}</h3>
+                              <Badge variant={state.variant} className="rounded-full text-[10px]">{state.label}</Badge>
+                            </div>
+                            {plan.description && (
+                              <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">
+                                {plan.description}
+                              </p>
+                            )}
+                            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                              <CalendarDays className="h-3.5 w-3.5" />
+                              <span>{format(new Date(plan.start_date), "d MMM yyyy", { locale: it })}</span>
+                              <span>–</span>
+                              <span>{format(new Date(plan.end_date), "d MMM yyyy", { locale: it })}</span>
+                            </div>
+                          </div>
+                          <ChevronRight className="mt-2 h-5 w-5 shrink-0 text-muted-foreground" />
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Calendar className="w-3 h-3" />
-                          <span>
-                            {format(start, "dd MMM yyyy", { locale: it })} – {format(end, "dd MMM yyyy", { locale: it })}
-                          </span>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                    </CardContent>
-                  </Card>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </ClientLayout>
   );
 };

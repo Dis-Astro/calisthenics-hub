@@ -17,6 +17,7 @@ import {
 import CoachLayout from "@/components/coach/CoachLayout";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, parseISO } from "date-fns";
 import { it } from "date-fns/locale";
+import CourseRosterManagement from "@/components/courses/CourseRosterManagement";
 
 interface Appointment {
   id: string;
@@ -99,6 +100,7 @@ const CoachCalendarPage = () => {
 
   return (
     <CoachLayout title="CALENDARIO" icon={<CalendarIcon className="w-6 h-6" />}>
+      {profile?.user_id && <CourseRosterManagement coachId={profile.user_id} />}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Calendar Grid */}
         <Card className="lg:col-span-2">

@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Users, Plus, Loader2, Edit, Trash2, UserPlus, X } from "lucide-react";
-import ClientLink from "@/components/admin/ClientLink";
+import { Users, Plus, Loader2, Edit, Trash2, UserPlus, X, CalendarClock } from "lucide-react";
+import CourseRosterManagement from "@/components/courses/CourseRosterManagement";
 
 interface Course {
   id: string;
@@ -42,11 +42,23 @@ interface CourseParticipant {
   joined_at: string;
 }
 
+interface FixedAssignment {
+  id: string;
+  course_id: string;
+  user_id: string;
+  day_of_week: number;
+  start_time: string;
+  is_active: boolean;
+}
+
+const fixedDayLabels: Record<number, string> = { 1: "Lun", 2: "Mar", 3: "Mer", 4: "Gio", 5: "Ven", 6: "Sab", 7: "Dom" };
+
 const CourseManagement = () => {
   const { toast } = useToast();
   const [courses, setCourses] = useState<Course[]>([]);
   const [coaches, setCoaches] = useState<Profile[]>([]);
   const [allClients, setAllClients] = useState<Profile[]>([]);
+  const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -57,9 +69,13 @@ const CourseManagement = () => {
   const [participantsDialogOpen, setParticipantsDialogOpen] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [participants, setParticipants] = useState<CourseParticipant[]>([]);
+  const [fixedAssignments, setFixedAssignments] = useState<FixedAssignment[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [addingParticipant, setAddingParticipant] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [participantType, setParticipantType] = useState<"floating" | "fixed">("floating");
+  const [fixedDay, setFixedDay] = useState("1");
+  const [fixedTime, setFixedTime] = useState("18:00");
   
   const [formData, setFormData] = useState({
     name: "",
@@ -78,15 +94,22 @@ const CourseManagement = () => {
 
   const fetchData = async () => {
     setLoading(true);
-    const [coursesRes, coachesRes, clientsRes] = await Promise.all([
+    const [coursesRes, coachesRes, clientsRes, participantsRes] = await Promise.all([
       supabase.from("courses").select("*").order("name"),
       supabase.from("profiles").select("*").in("role", ["admin", "coach"]),
-      supabase.from("profiles").select("*").in("role", ["cliente_corso", "cliente_palestra", "cliente_coaching"])
+      supabase.from("profiles").select("*").in("role", ["cliente_corso", "cliente_palestra", "cliente_coaching"]),
+      supabase.from("course_participants").select("course_id"),
     ]);
 
     if (coursesRes.data) setCourses(coursesRes.data);
     if (coachesRes.data) setCoaches(coachesRes.data);
     if (clientsRes.data) setAllClients(clientsRes.data);
+    if (participantsRes.data) {
+      setParticipantCounts(participantsRes.data.reduce<Record<string, number>>((counts, participant) => {
+        counts[participant.course_id] = (counts[participant.course_id] ?? 0) + 1;
+        return counts;
+      }, {}));
+    }
     setLoading(false);
   };
 
@@ -179,12 +202,12 @@ const CourseManagement = () => {
 
   const fetchParticipants = async (courseId: string) => {
     setLoadingParticipants(true);
-    const { data } = await supabase
-      .from("course_participants")
-      .select("*")
-      .eq("course_id", courseId)
-      .order("joined_at", { ascending: false });
-    setParticipants(data || []);
+    const [participantsResult, assignmentsResult] = await Promise.all([
+      supabase.from("course_participants").select("*").eq("course_id", courseId).order("joined_at", { ascending: false }),
+      supabase.from("course_fixed_assignments").select("*").eq("course_id", courseId).eq("is_active", true),
+    ]);
+    setParticipants(participantsResult.data || []);
+    setFixedAssignments(assignmentsResult.data || []);
     setLoadingParticipants(false);
   };
 
@@ -205,6 +228,17 @@ const CourseManagement = () => {
     if (error) {
       toast({ title: "Errore", description: "Impossibile aggiungere il partecipante", variant: "destructive" });
     } else {
+      if (participantType === "fixed") {
+        const { error: assignmentError } = await supabase.from("course_fixed_assignments").insert({
+          course_id: selectedCourse.id,
+          user_id: selectedClientId,
+          day_of_week: Number(fixedDay),
+          start_time: `${fixedTime}:00`,
+        });
+        if (assignmentError) {
+          toast({ title: "Iscritto senza turno fisso", description: assignmentError.message, variant: "destructive" });
+        }
+      }
       toast({ title: "Aggiunto", description: "Partecipante aggiunto al corso" });
       setSelectedClientId("");
       await fetchParticipants(selectedCourse.id);
@@ -212,8 +246,34 @@ const CourseManagement = () => {
     setAddingParticipant(false);
   };
 
+  const addFixedAssignment = async (userId: string) => {
+    if (!selectedCourse) return;
+    const { error } = await supabase.from("course_fixed_assignments").insert({
+      course_id: selectedCourse.id,
+      user_id: userId,
+      day_of_week: Number(fixedDay),
+      start_time: `${fixedTime}:00`,
+    });
+    if (error) toast({ title: "Turno non assegnato", description: error.message, variant: "destructive" });
+    else {
+      toast({ title: "Turno fisso assegnato" });
+      await fetchParticipants(selectedCourse.id);
+    }
+  };
+
+  const removeFixedAssignment = async (assignmentId: string) => {
+    if (!selectedCourse) return;
+    const { error } = await supabase.from("course_fixed_assignments").delete().eq("id", assignmentId);
+    if (error) toast({ title: "Errore", description: "Impossibile rimuovere il turno fisso", variant: "destructive" });
+    else await fetchParticipants(selectedCourse.id);
+  };
+
   const removeParticipant = async (participantId: string) => {
     if (!selectedCourse) return;
+    const participant = participants.find((item) => item.id === participantId);
+    if (participant) {
+      await supabase.from("course_fixed_assignments").delete().eq("course_id", selectedCourse.id).eq("user_id", participant.user_id);
+    }
     const { error } = await supabase
       .from("course_participants")
       .delete()
@@ -325,6 +385,30 @@ const CourseManagement = () => {
               <p>Nessun corso creato</p>
             </div>
           ) : (
+            <>
+            <div className="space-y-3 md:hidden">
+              {courses.map((course) => (
+                <div key={course.id} className="rounded-2xl border border-border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2"><div className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: course.color }} /><p className="font-semibold">{course.name}</p></div>
+                      <p className="mt-1 text-xs text-muted-foreground">Coach: {getCoachName(course.coach_id)} · {course.duration_minutes} min</p>
+                    </div>
+                    <Badge variant={course.is_active ? "default" : "secondary"}>{course.is_active ? "Attivo" : "Disattivo"}</Badge>
+                  </div>
+                  <button type="button" className="mt-3 grid w-full grid-cols-2 gap-2 text-center" onClick={() => openParticipantsDialog(course)}>
+                    <span className="rounded-xl bg-primary/10 p-3"><strong className="block text-xl text-primary">{participantCounts[course.id] ?? 0}</strong><span className="text-xs text-muted-foreground">iscritti</span></span>
+                    <span className="rounded-xl bg-muted/50 p-3"><strong className="block text-xl">{course.max_participants || "∞"}</strong><span className="text-xs text-muted-foreground">capienza</span></span>
+                  </button>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <Button variant="secondary" size="sm" className="gap-1" onClick={() => openParticipantsDialog(course)}><UserPlus className="h-4 w-4" />Iscritti</Button>
+                    <Button variant="outline" size="sm" className="gap-1" onClick={() => openEditDialog(course)}><Edit className="h-4 w-4" />Modifica</Button>
+                    <Button variant="ghost" size="sm" className="gap-1 text-destructive" onClick={() => deleteCourse(course.id)}><Trash2 className="h-4 w-4" />Elimina</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -347,7 +431,12 @@ const CourseManagement = () => {
                     </TableCell>
                     <TableCell>{getCoachName(course.coach_id)}</TableCell>
                     <TableCell>{course.duration_minutes} min</TableCell>
-                    <TableCell>{course.max_participants || "∞"}</TableCell>
+                    <TableCell>
+                      <button type="button" className="text-left" onClick={() => openParticipantsDialog(course)}>
+                        <span className="block font-semibold text-primary">{participantCounts[course.id] ?? 0} iscritti</span>
+                        <span className="text-xs text-muted-foreground">capienza {course.max_participants || "∞"}</span>
+                      </button>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={course.is_active ? "default" : "secondary"}>
                         {course.is_active ? "Attivo" : "Disattivo"}
@@ -368,9 +457,13 @@ const CourseManagement = () => {
                 ))}
               </TableBody>
             </Table>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>
+
+      <CourseRosterManagement />
 
       {/* Participants Dialog */}
       <Dialog open={participantsDialogOpen} onOpenChange={setParticipantsDialogOpen}>
@@ -379,13 +472,11 @@ const CourseManagement = () => {
             <DialogTitle className="font-display tracking-wider">
               Iscritti — {selectedCourse?.name}
             </DialogTitle>
-            <DialogDescription>
-              Gestisci i partecipanti di questo corso
-            </DialogDescription>
+            <DialogDescription>Iscrizione al corso e posto abituale. Le presenze si confermano poi per ogni lezione.</DialogDescription>
           </DialogHeader>
 
-          {/* Add participant */}
-          <div className="flex gap-2">
+          <div className="rounded-xl border border-border p-3 space-y-3">
+            <div className="flex gap-2">
             <Select value={selectedClientId} onValueChange={setSelectedClientId}>
               <SelectTrigger className="flex-1">
                 <SelectValue placeholder="Seleziona un utente..." />
@@ -401,6 +492,19 @@ const CourseManagement = () => {
             <Button onClick={addParticipant} disabled={!selectedClientId || addingParticipant} size="sm">
               {addingParticipant ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             </Button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Select value={participantType} onValueChange={(value: "floating" | "fixed") => setParticipantType(value)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="floating">Occasionale</SelectItem><SelectItem value="fixed">Posto fisso</SelectItem></SelectContent>
+              </Select>
+              <Select value={fixedDay} onValueChange={setFixedDay}>
+                <SelectTrigger disabled={participantType === "floating"}><SelectValue /></SelectTrigger>
+                <SelectContent>{Object.entries(fixedDayLabels).map(([day, label]) => <SelectItem key={day} value={day}>{label}</SelectItem>)}</SelectContent>
+              </Select>
+              <Input type="time" value={fixedTime} onChange={(event) => setFixedTime(event.target.value)} disabled={participantType === "floating"} />
+            </div>
+            <p className="text-xs text-muted-foreground">Fisso = stesso giorno e orario ogni settimana. Occasionale = sceglie tra i posti liberi. Il fisso deve comunque rispondere alla notifica settimanale.</p>
           </div>
 
           {/* Participants list */}
@@ -415,20 +519,35 @@ const CourseManagement = () => {
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">{participants.length} iscritti</p>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg bg-muted/50 p-2"><p className="font-bold">{participants.length}</p><p className="text-[11px] text-muted-foreground">iscritti</p></div>
+                <div className="rounded-lg bg-primary/10 p-2"><p className="font-bold text-primary">{new Set(fixedAssignments.map((item) => item.user_id)).size}</p><p className="text-[11px] text-muted-foreground">con posto fisso</p></div>
+                <div className="rounded-lg bg-muted/50 p-2"><p className="font-bold">{participants.length - new Set(fixedAssignments.map((item) => item.user_id)).size}</p><p className="text-[11px] text-muted-foreground">occasionali</p></div>
+              </div>
               {participants.map(p => (
-                <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-card">
-                  <div>
-                    <p className="font-medium text-sm">
-                      <ClientLink userId={p.user_id}>{getClientName(p.user_id)}</ClientLink>
-                    </p>
+                <div key={p.id} className="p-3 rounded-lg border border-border bg-card">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                    <p className="font-medium text-sm">{getClientName(p.user_id)}</p>
                     <p className="text-xs text-muted-foreground">
                       Iscritto dal {new Date(p.joined_at).toLocaleDateString("it-IT")}
                     </p>
-                  </div>
+                    </div>
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeParticipant(p.id)}>
                     <X className="w-4 h-4 text-destructive" />
                   </Button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {fixedAssignments.filter((assignment) => assignment.user_id === p.user_id).map((assignment) => (
+                      <Badge key={assignment.id} variant="secondary" className="gap-1">
+                        Fisso {fixedDayLabels[assignment.day_of_week]} {assignment.start_time.slice(0, 5)}
+                        <button type="button" onClick={() => void removeFixedAssignment(assignment.id)} aria-label="Rimuovi turno fisso"><X className="h-3 w-3" /></button>
+                      </Badge>
+                    ))}
+                    <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => void addFixedAssignment(p.user_id)}>
+                      <CalendarClock className="h-3.5 w-3.5" />Rendi fisso: {fixedDayLabels[Number(fixedDay)]} {fixedTime}
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>

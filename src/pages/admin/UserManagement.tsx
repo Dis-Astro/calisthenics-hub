@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Users, UserPlus, Search, Loader2, Trash2, Edit, Eye } from "lucide-react";
+import { Users, UserPlus, Search, Loader2, Trash2, Edit, Eye, Phone, CalendarDays } from "lucide-react";
 import AdminLayout from "@/components/admin/AdminLayout";
-import ClientLink from "@/components/admin/ClientLink";
 import type { Database } from "@/integrations/supabase/types";
 
 type UserRole = Database["public"]["Enums"]["user_role"];
@@ -38,7 +37,7 @@ const roleLabels: Record<UserRole, string> = {
   cliente_palestra: "Cliente Palestra",
   cliente_coaching: "Cliente Coaching",
   cliente_corso: "Cliente Corso",
-  segretaria: "Segretaria"
+  segretaria: "Segreteria"
 };
 
 const roleBadgeVariant: Record<UserRole, "default" | "secondary" | "destructive" | "outline"> = {
@@ -47,7 +46,7 @@ const roleBadgeVariant: Record<UserRole, "default" | "secondary" | "destructive"
   cliente_palestra: "secondary",
   cliente_coaching: "outline",
   cliente_corso: "secondary",
-  segretaria: "default"
+  segretaria: "outline"
 };
 
 const UserManagement = () => {
@@ -83,11 +82,7 @@ const UserManagement = () => {
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("profiles")
@@ -100,7 +95,11 @@ const UserManagement = () => {
       setUsers(data || []);
     }
     setLoading(false);
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    void fetchUsers();
+  }, [fetchUsers]);
 
   const createUser = async () => {
     if (!newUser.email || !newUser.password || !newUser.first_name || !newUser.last_name) {
@@ -133,8 +132,8 @@ const UserManagement = () => {
       setNewUser({ email: "", password: "", first_name: "", last_name: "", role: "cliente_palestra", phone: "", address: "", date_of_birth: "", fiscal_code: "", emergency_contact: "" });
       setIsCreateDialogOpen(false);
       fetchUsers();
-    } catch (error: any) {
-      toast({ title: "Errore", description: error.message || "Impossibile creare l'utente", variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Errore", description: error instanceof Error ? error.message : "Impossibile creare l'utente", variant: "destructive" });
     }
     setCreating(false);
   };
@@ -214,7 +213,6 @@ const UserManagement = () => {
             <SelectItem value="cliente_palestra">Clienti Palestra</SelectItem>
             <SelectItem value="cliente_coaching">Clienti Coaching</SelectItem>
             <SelectItem value="cliente_corso">Clienti Corso</SelectItem>
-            <SelectItem value="segretaria">Segretaria</SelectItem>
           </SelectContent>
         </Select>
         
@@ -256,7 +254,6 @@ const UserManagement = () => {
                     <SelectItem value="cliente_palestra">Cliente Palestra</SelectItem>
                     <SelectItem value="cliente_coaching">Cliente Coaching</SelectItem>
                     <SelectItem value="cliente_corso">Cliente Corso</SelectItem>
-                    <SelectItem value="segretaria">Segretaria</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -312,7 +309,37 @@ const UserManagement = () => {
               <p>Nessun utente trovato</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="space-y-3 md:hidden">
+              {filteredUsers.map((user) => (
+                <article key={user.id} className="rounded-2xl border border-border bg-card p-4">
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() => navigate(`/admin/utenti/${user.user_id}`)}
+                    aria-label={`Apri ${user.first_name} ${user.last_name}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words text-base font-semibold">{user.first_name} {user.last_name}</p>
+                        <Badge variant={roleBadgeVariant[user.role]} className="mt-2">{roleLabels[user.role]}</Badge>
+                      </div>
+                      <Eye className="h-5 w-5 shrink-0 text-primary" />
+                    </div>
+                    <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-2"><Phone className="h-4 w-4" />{user.phone || "Telefono non indicato"}</span>
+                      <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4" />Registrato il {new Date(user.created_at).toLocaleDateString("it-IT")}</span>
+                    </div>
+                  </button>
+                  <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border/60 pt-3">
+                    <Button variant="secondary" size="sm" onClick={() => navigate(`/admin/utenti/${user.user_id}`)}><Eye className="mr-1.5 h-4 w-4" />Apri</Button>
+                    <Button variant="outline" size="sm" onClick={() => openEditDialog(user)}><Edit className="mr-1.5 h-4 w-4" />Modifica</Button>
+                    <Button variant="outline" size="sm" onClick={() => setDeleteUserId(user.id)} disabled={user.role === "admin"} aria-label={`Elimina ${user.first_name} ${user.last_name}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -330,9 +357,7 @@ const UserManagement = () => {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigate(`/admin/utenti/${user.user_id}`)}
                     >
-                      <TableCell>
-                        <ClientLink userId={user.user_id}>{user.first_name} {user.last_name}</ClientLink>
-                      </TableCell>
+                      <TableCell className="font-medium">{user.first_name} {user.last_name}</TableCell>
                       <TableCell>
                         <Badge variant={roleBadgeVariant[user.role]}>{roleLabels[user.role]}</Badge>
                       </TableCell>
@@ -370,6 +395,7 @@ const UserManagement = () => {
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -403,7 +429,6 @@ const UserManagement = () => {
                     <SelectItem value="cliente_palestra">Cliente Palestra</SelectItem>
                     <SelectItem value="cliente_coaching">Cliente Coaching</SelectItem>
                     <SelectItem value="cliente_corso">Cliente Corso</SelectItem>
-                    <SelectItem value="segretaria">Segretaria</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
