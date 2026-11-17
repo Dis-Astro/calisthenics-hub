@@ -64,6 +64,26 @@ perche' Cloudflare non lo legge dal `wrangler.toml`.
 
 ## Note tecniche
 
+### Volume & Intensità nell'editor schede
+
+Prima di distribuire il frontend aggiornato, applicare al database Supabase
+dell'ambiente scelto la migrazione
+`supabase/migrations/20261113120000_volume_intensity_tables.sql`.
+La build frontend non applica le migrazioni del database.
+
+Le tabelle sono associate al cliente e condivise tra le sue schede e i suoi test.
+Admin e coach assegnato possono modificarle; il cliente non ha accesso.
+Le celle, compresa TOT., sono testo libero senza calcoli automatici.
+Lo storico mostra inizialmente le righe create nel giorno locale più recente.
+In caso di errore di salvataggio, mantenere aperto l'editor e usare “Riprova”.
+
+Verifica sull'ambiente di test: creare una tabella e una riga, modificare date
+e valori, ricaricare e verificare la persistenza; controllare lo storico,
+la conferma di eliminazione e l'accesso con admin, coach assegnato,
+coach non assegnato e cliente.
+
+### Struttura applicazione
+
 - Le route sono caricate in lazy loading da `src/App.tsx`.
 - Il database non viene modificato da questa pulizia: le migrazioni Supabase restano in `supabase/migrations`.
 - Le Edge Function admin sono in `supabase/functions`.

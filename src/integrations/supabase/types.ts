@@ -469,6 +469,77 @@ export type Database = {
         }
         Relationships: []
       }
+      volume_table_rows: {
+        Row: {
+          cells: Json
+          created_at: string
+          created_by: string | null
+          dates: Json
+          id: string
+          label: string
+          table_id: string
+          updated_at: string
+        }
+        Insert: {
+          cells?: Json
+          created_at?: string
+          created_by?: string | null
+          dates?: Json
+          id?: string
+          label?: string
+          table_id: string
+          updated_at?: string
+        }
+        Update: {
+          cells?: Json
+          created_at?: string
+          created_by?: string | null
+          dates?: Json
+          id?: string
+          label?: string
+          table_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "volume_table_rows_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "volume_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      volume_tables: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          position: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          position?: number
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          position?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       gym_hours: {
         Row: {
           close_time: string
