@@ -71,9 +71,10 @@ perche' Cloudflare non lo legge dal `wrangler.toml`.
 
 ### Volume & Intensità per il lavoro quotidiano
 
-La pagina e' indipendente dalla creazione delle schede e dei test:
+Le tabelle sono indipendenti dalla creazione delle schede e dei test:
 
-- Admin: aprire il profilo cliente e premere **Volume & Intensità**.
+- Admin: aprire il profilo cliente; **Volume & Intensità** si trova direttamente
+  sotto le schede di allenamento. Il pulsante in alto scorre a questa sezione.
 - Coach: aprire **I miei clienti** e premere **Volume & Intensità** sul cliente assegnato.
 
 E' disponibile anche se il cliente non ha alcuna scheda di allenamento.

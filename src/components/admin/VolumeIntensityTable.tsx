@@ -88,6 +88,7 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
   const [tables, setTables] = useState<VolumeTable[]>([]);
   const [rows, setRows] = useState<VolumeRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [saving, setSaving] = useState<Set<string>>(new Set());
@@ -105,6 +106,7 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const { data: tableData, error: tableError } = await supabase
       .from("volume_tables")
       .select("*")
@@ -112,7 +114,9 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
       .order("position", { ascending: true })
       .order("created_at", { ascending: true });
     if (tableError) {
-      showError("Impossibile caricare le tabelle volume e intensità");
+      setLoadError(tableError.code === "PGRST205"
+        ? "Le tabelle Volume & Intensità non sono ancora disponibili nel database. L'amministratore deve completare l'attivazione del database collegato al sito."
+        : "Impossibile caricare le tabelle Volume & Intensità. Riprova tra poco.");
       setLoading(false);
       return;
     }
@@ -124,13 +128,19 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
         .select("*")
         .in("table_id", loadedTables.map(t => t.id))
         .order("created_at", { ascending: false });
-      if (rowError) showError("Impossibile caricare le righe delle tabelle");
+      if (rowError) {
+        setLoadError(rowError.code === "PGRST205"
+          ? "L'attivazione di Volume & Intensità nel database è incompleta: manca l'archivio delle righe."
+          : "Impossibile caricare le righe delle tabelle. Riprova tra poco.");
+        setLoading(false);
+        return;
+      }
       loadedRows = (rowData ?? []).map(toRow);
     }
     setTables(loadedTables);
     setRows(loadedRows);
     setLoading(false);
-  }, [clientId, showError]);
+  }, [clientId]);
 
   useEffect(() => {
     load();
@@ -324,6 +334,15 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
 
   if (loading) {
     return <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+  }
+
+  if (loadError) {
+    return (
+      <div role="alert" className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 p-4">
+        <p className="text-sm">{loadError}</p>
+        <Button variant="outline" onClick={() => void load()}>Riprova</Button>
+      </div>
+    );
   }
 
   return (

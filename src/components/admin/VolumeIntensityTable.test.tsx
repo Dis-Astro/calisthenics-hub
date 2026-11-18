@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import VolumeIntensityTable from "./VolumeIntensityTable";
 
-const mocks = vi.hoisted(() => ({ save: vi.fn(), toast: vi.fn() }));
+const mocks = vi.hoisted(() => ({ save: vi.fn(), toast: vi.fn(), loadError: null as { code: string; message: string } | null }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: "coach" } }) }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mocks.toast }) }));
 vi.mock("@/integrations/supabase/client", () => ({
@@ -19,7 +19,7 @@ vi.mock("@/integrations/supabase/client", () => ({
         eq: () => query,
         in: () => query,
         order: () => query,
-        then: (resolve: (value: unknown) => void) => Promise.resolve({ data: result, error: null }).then(resolve),
+        then: (resolve: (value: unknown) => void) => Promise.resolve({ data: mocks.loadError ? null : result, error: mocks.loadError }).then(resolve),
         update: (changes: unknown) => ({ eq: (field: string, id: string) => mocks.save(table, id, changes) }),
       };
       return query;
@@ -30,6 +30,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 beforeEach(() => {
   mocks.save.mockReset().mockResolvedValue({ error: null });
   mocks.toast.mockClear();
+  mocks.loadError = null;
 });
 
 afterEach(async () => {
@@ -43,6 +44,16 @@ async function openTable() {
 }
 
 describe("VolumeIntensityTable", () => {
+  it("blocks creation when the database tables are missing and supports reloading after activation", async () => {
+    mocks.loadError = { code: "PGRST205", message: "Missing table" };
+    render(<VolumeIntensityTable clientId="client" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("non sono ancora disponibili nel database");
+    expect(screen.queryByRole("button", { name: "Nuova tabella" })).not.toBeInTheDocument();
+    mocks.loadError = null;
+    fireEvent.click(screen.getByRole("button", { name: "Riprova" }));
+    expect(await screen.findByDisplayValue("Trazioni")).toBeInTheDocument();
+  });
+
   it("shows the latest session and reveals older rows on request", async () => {
     await openTable();
     expect(screen.getByDisplayValue("Questa settimana")).toBeInTheDocument();

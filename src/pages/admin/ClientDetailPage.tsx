@@ -58,6 +58,7 @@ import WorkoutPlanCard from "@/components/admin/WorkoutPlanCard";
 import CoachAssignmentManager from "@/components/admin/CoachAssignmentManager";
 import PasswordResetDialog from "@/components/admin/PasswordResetDialog";
 import ClientProgressView from "@/components/coaching/ClientProgressView";
+import VolumeIntensityTable from "@/components/admin/VolumeIntensityTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendingUp } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
@@ -504,8 +505,8 @@ const ClientDetailPage = () => {
                 <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Iscritto {format(new Date(profile.created_at), "dd MMM yyyy", { locale: it })}</span>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button className="gap-2" onClick={() => navigate(`/admin/utenti/${profile.user_id}/volume-intensita`)}>
-                  <Table2 className="w-4 h-4" />Volume & Intensità
+                <Button className="gap-2" asChild>
+                  <a href="#volume-intensita"><Table2 className="w-4 h-4" />Volume & Intensità</a>
                 </Button>
                 <PasswordResetDialog userId={profile.user_id} userName={`${profile.first_name} ${profile.last_name}`} />
               </div>
@@ -843,6 +844,18 @@ const ClientDetailPage = () => {
                   <ClientProgressView clientId={profile.user_id} />
                 </TabsContent>
               </Tabs>
+            </CardContent>
+          </Card>
+
+          <Card id="volume-intensita" className="mt-6 scroll-mt-6">
+            <CardHeader>
+              <CardTitle className="font-display tracking-wider flex items-center gap-2">
+                <Table2 className="w-5 h-5 text-primary" />Volume & Intensità
+              </CardTitle>
+              <CardDescription>Tabelle di lavoro quotidiano di {profile.first_name}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <VolumeIntensityTable key={profile.user_id} clientId={profile.user_id} />
             </CardContent>
           </Card>
 
