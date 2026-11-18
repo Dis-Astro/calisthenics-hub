@@ -69,6 +69,11 @@ perche' Cloudflare non lo legge dal `wrangler.toml`.
 
 ## Note tecniche
 
+Il passaggio dal backend Lovable al Supabase di proprieta e documentato in
+[docs/MIGRATION_STATUS.md](docs/MIGRATION_STATUS.md). Il confronto dei file locali
+non equivale a una sincronizzazione dei database: il cambio backend resta da
+eseguire dopo accesso, backup, ripristino e collaudo.
+
 ### Volume & Intensità per il lavoro quotidiano
 
 Le tabelle sono indipendenti dalla creazione delle schede e dei test:
