@@ -39,10 +39,15 @@ npm run check
 Impostazioni consigliate per Cloudflare Pages collegato a GitHub:
 
 - Framework preset: `Vite`
-- Install command: `npm install --no-audit --no-fund`
+- Install command (se configurabile): `npm ci --no-audit --no-fund`
 - Build command: `npm run build`
 - Build output directory: `dist`
 - Node version: `22.16.0` (pinzata anche in `.node-version`)
+
+Il progetto usa npm e mantiene solo `package-lock.json` come lockfile.
+Non aggiungere `bun.lock` o `bun.lockb`: Cloudflare puo' selezionare Bun
+durante l'installazione automatica e fallire se il relativo lockfile non e'
+aggiornato. Per verificare un'installazione ripetibile usare `npm ci`.
 
 Variabili di ambiente da configurare in Cloudflare Pages, sezione
 `Settings > Environment variables`, per Production e Preview:
