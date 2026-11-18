@@ -28,13 +28,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import ExerciseNameInput from "@/components/admin/ExerciseNameInput";
-import VolumeIntensityTable from "@/components/admin/VolumeIntensityTable";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import LightningRating from "@/components/coaching/LightningRating";
 import { Slider } from "@/components/ui/slider";
 import { 
   Loader2, Plus, Trash2, ArrowLeft, Dumbbell, Save,
-  ChevronDown, ChevronUp, FileText, ClipboardList, Pause, Play, CheckCircle, Bell, Table2
+  ChevronDown, ChevronUp, FileText, ClipboardList, Pause, Play, CheckCircle, Bell
 } from "lucide-react";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
@@ -133,7 +131,6 @@ const WorkoutPlanEditor = () => {
   const [tests, setTests] = useState<TestPlan[]>([]);
   const [selectedRightTestId, setSelectedRightTestId] = useState<string>("");
   const [openFeedbackExercises, setOpenFeedbackExercises] = useState<Set<string>>(new Set());
-  const [leftView, setLeftView] = useState<"volume" | "plan">("volume");
 
   // Mobile tab
   const [activeTab, setActiveTab] = useState("editor");
@@ -879,11 +876,10 @@ const WorkoutPlanEditor = () => {
       {isMobile ? (
         /* ─── Mobile: Tabbed Layout ─── */
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4 mb-4">
+          <TabsList className="grid w-full grid-cols-3 mb-4">
             <TabsTrigger value="previous">Precedente</TabsTrigger>
             <TabsTrigger value="editor">Editor</TabsTrigger>
             <TabsTrigger value="tests">Test</TabsTrigger>
-            <TabsTrigger value="volume">Volume</TabsTrigger>
           </TabsList>
           <TabsContent value="previous">
             <Card><CardContent className="p-4">{renderPreviousPlan()}</CardContent></Card>
@@ -894,39 +890,19 @@ const WorkoutPlanEditor = () => {
           <TabsContent value="tests">
             <Card><CardContent className="p-4">{renderTests()}</CardContent></Card>
           </TabsContent>
-          <TabsContent value="volume" forceMount className="data-[state=inactive]:hidden">
-            <Card><CardContent className="p-4">{userId && <VolumeIntensityTable key={userId} clientId={userId} />}</CardContent></Card>
-          </TabsContent>
         </Tabs>
       ) : (
-        /* ─── Desktop: tre pannelli ridimensionabili ───
-           Sinistra: Volume & Intensità (default) oppure Scheda laterale.
-           Trascinando i divisori il coach decide quanto spazio dare a ogni pannello;
-           le dimensioni restano memorizzate nel browser. */
-        <ResizablePanelGroup direction="horizontal" autoSaveId="workout-editor-panels-v1" className="!h-auto items-start">
-          {/* Left: Volume & Intensità / Scheda laterale */}
-          <ResizablePanel defaultSize={45} minSize={20} className="pr-2">
+        /* ─── Desktop: Three-Column Layout ─── */
+        <div className="grid grid-cols-12 gap-4">
+          {/* Left: Previous Plan + Feedback */}
+          <div className="col-span-3">
             <Card>
               <div className="bg-muted px-4 py-2 border-b space-y-1.5">
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant={leftView === "volume" ? "default" : "ghost"}
-                    className="h-7 gap-1.5 text-xs font-display tracking-wider"
-                    onClick={() => setLeftView("volume")}
-                  >
-                    <Table2 className="w-3.5 h-3.5" />Volume & Intensità
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={leftView === "plan" ? "default" : "ghost"}
-                    className="h-7 gap-1.5 text-xs font-display tracking-wider"
-                    onClick={() => setLeftView("plan")}
-                  >
-                    <ClipboardList className="w-3.5 h-3.5" />Scheda Laterale
-                  </Button>
-                </div>
-                {leftView === "plan" && allPlans.length > 0 && (
+                <h3 className="font-display text-sm tracking-wider flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4 text-primary" />
+                  Scheda Laterale
+                </h3>
+                {allPlans.length > 0 && (
                   <Select value={selectedLeftPlanId} onValueChange={setSelectedLeftPlanId}>
                     <SelectTrigger className="h-7 text-xs">
                       <SelectValue placeholder="Seleziona scheda..." />
@@ -942,18 +918,13 @@ const WorkoutPlanEditor = () => {
                 )}
               </div>
               <CardContent className="p-3 max-h-[calc(100vh-260px)] overflow-y-auto">
-                <div hidden={leftView !== "volume"}>
-                  {userId && <VolumeIntensityTable key={userId} clientId={userId} />}
-                </div>
-                {leftView === "plan" && renderPreviousPlan()}
+                {renderPreviousPlan()}
               </CardContent>
             </Card>
-          </ResizablePanel>
-
-          <ResizableHandle withHandle className="self-stretch" />
+          </div>
 
           {/* Center: Editor */}
-          <ResizablePanel defaultSize={35} minSize={25} className="px-2">
+          <div className="col-span-6">
             <Card>
               <div className="bg-muted px-4 py-2 border-b">
                 <h3 className="font-display text-sm tracking-wider flex items-center gap-2">
@@ -965,12 +936,10 @@ const WorkoutPlanEditor = () => {
                 {renderEditor()}
               </CardContent>
             </Card>
-          </ResizablePanel>
-
-          <ResizableHandle withHandle className="self-stretch" />
+          </div>
 
           {/* Right: Tests / Notes */}
-          <ResizablePanel defaultSize={20} minSize={12} className="pl-2">
+          <div className="col-span-3">
             <Card>
               <div className="bg-muted px-4 py-2 border-b space-y-1.5">
                 <h3 className="font-display text-sm tracking-wider flex items-center gap-2">
@@ -996,8 +965,8 @@ const WorkoutPlanEditor = () => {
                 {renderTests()}
               </CardContent>
             </Card>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+          </div>
+        </div>
       )}
     </AdminLayout>
   );

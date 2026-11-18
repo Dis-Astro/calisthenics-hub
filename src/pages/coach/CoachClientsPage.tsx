@@ -12,6 +12,7 @@ import {
   Calendar,
   Plus,
   Eye,
+  Table2,
   Loader2,
   User
 } from "lucide-react";
@@ -148,6 +149,11 @@ const CoachClientsPage = () => {
                     )}
                   </div>
                   
+                  <Button variant="outline" size="sm" className="w-full gap-2" asChild>
+                    <Link to={`/coach/clienti/${client.user_id}/volume-intensita`}>
+                      <Table2 className="w-4 h-4" />Volume & Intensità
+                    </Link>
+                  </Button>
                   <div className="flex gap-2">
                     <Button 
                       variant="outline" 

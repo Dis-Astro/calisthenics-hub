@@ -20,6 +20,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const UserManagement = lazy(() => import("./pages/admin/UserManagement"));
 const ClientDetailPage = lazy(() => import("./pages/admin/ClientDetailPage"));
+const ClientVolumePage = lazy(() => import("./pages/coaching/ClientVolumePage"));
 const SubscriptionManagement = lazy(() => import("./pages/admin/SubscriptionManagement"));
 const CalendarManagement = lazy(() => import("./pages/admin/CalendarManagement"));
 const WorkoutPlanEditor = lazy(() => import("./pages/admin/WorkoutPlanEditor"));
@@ -82,6 +83,7 @@ const protectedRoutes: AppRoute[] = [
   { path: "/admin/utenti", element: <UserManagement />, allowedRoles: adminOnly },
   { path: "/admin/utenti/nuovo", element: <UserManagement />, allowedRoles: adminOnly },
   { path: "/admin/utenti/:userId", element: <ClientDetailPage />, allowedRoles: adminOnly },
+  { path: "/admin/utenti/:userId/volume-intensita", element: <ClientVolumePage />, allowedRoles: adminOnly },
   { path: "/admin/utenti/:userId/scheda/nuova", element: <WorkoutPlanEditor />, allowedRoles: adminOnly },
   { path: "/admin/utenti/:userId/scheda/:planId/modifica", element: <WorkoutPlanEditor />, allowedRoles: adminOnly },
   { path: "/admin/abbonamenti", element: <SubscriptionManagement />, allowedRoles: adminOnly },
@@ -97,6 +99,7 @@ const protectedRoutes: AppRoute[] = [
   { path: "/segretaria/*", element: <SegretariaDashboard />, allowedRoles: segretariaRoles },
   { path: "/coach", element: <CoachDashboard />, allowedRoles: coachRoles },
   { path: "/coach/clienti", element: <CoachClientsPage />, allowedRoles: coachRoles },
+  { path: "/coach/clienti/:userId/volume-intensita", element: <ClientVolumePage />, allowedRoles: coachRoles },
   { path: "/coach/schede", element: <CoachWorkoutsPage />, allowedRoles: coachRoles },
   { path: "/coach/calendario", element: <CoachCalendarPage />, allowedRoles: coachRoles },
   { path: "/coach/segnalazioni", element: <CoachReportsPage />, allowedRoles: coachRoles },

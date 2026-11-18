@@ -31,6 +31,7 @@ import {
   X,
   Users,
   Power,
+  Table2,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -502,7 +503,10 @@ const ClientDetailPage = () => {
                 {profile.address && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{profile.address}</span>}
                 <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Iscritto {format(new Date(profile.created_at), "dd MMM yyyy", { locale: it })}</span>
               </div>
-              <div className="mt-3">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button className="gap-2" onClick={() => navigate(`/admin/utenti/${profile.user_id}/volume-intensita`)}>
+                  <Table2 className="w-4 h-4" />Volume & Intensità
+                </Button>
                 <PasswordResetDialog userId={profile.user_id} userName={`${profile.first_name} ${profile.last_name}`} />
               </div>
             </div>

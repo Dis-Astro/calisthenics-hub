@@ -69,7 +69,15 @@ perche' Cloudflare non lo legge dal `wrangler.toml`.
 
 ## Note tecniche
 
-### Volume & Intensità nell'editor schede
+### Volume & Intensità per il lavoro quotidiano
+
+La pagina e' indipendente dalla creazione delle schede e dei test:
+
+- Admin: aprire il profilo cliente e premere **Volume & Intensità**.
+- Coach: aprire **I miei clienti** e premere **Volume & Intensità** sul cliente assegnato.
+
+E' disponibile anche se il cliente non ha alcuna scheda di allenamento.
+Le tabelle non compaiono nell'editor delle schede.
 
 Prima di distribuire il frontend aggiornato, applicare al database Supabase
 dell'ambiente scelto la migrazione
@@ -80,9 +88,10 @@ Le tabelle sono associate al cliente e condivise tra le sue schede e i suoi test
 Admin e coach assegnato possono modificarle; il cliente non ha accesso.
 Le celle, compresa TOT., sono testo libero senza calcoli automatici.
 Lo storico mostra inizialmente le righe create nel giorno locale più recente.
-In caso di errore di salvataggio, mantenere aperto l'editor e usare “Riprova”.
+In caso di errore di salvataggio, mantenere aperta la pagina e usare “Riprova”.
 
-Verifica sull'ambiente di test: creare una tabella e una riga, modificare date
+Verifica sull'ambiente di test: aprire le tabelle anche su un cliente senza schede,
+creare una tabella e una riga, modificare date
 e valori, ricaricare e verificare la persistenza; controllare lo storico,
 la conferma di eliminazione e l'accesso con admin, coach assegnato,
 coach non assegnato e cliente.
