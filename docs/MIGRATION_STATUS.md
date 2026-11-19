@@ -1,7 +1,10 @@
 # Migrazione da Lovable al Supabase di proprieta
 
-Stato ricostruito il 18 novembre 2026. La migrazione remota e il cambio backend
-non sono stati eseguiti da questa chat.
+Stato aggiornato il 19 novembre 2026. Il sito usa ancora il backend Lovable.
+Importato nello staging nostro il backup completo del 18 novembre, ore 15:24 UTC.
+Verificato il contenuto di tutte le 25 tabelle importate con conteggi e impronte
+identiche al backup, escluso updated_at applicativo. Il passaggio del sito non e
+ancora stato eseguito: occorrono aggiornamento finale, verifica accessi e servizi.
 
 ## Obiettivo e riferimenti recuperati
 
@@ -20,7 +23,31 @@ Candidata del 12 settembre e Database - chiusura verifiche locali.
 | Ambiente | Identificativo | Evidenza | Stato verificato oggi |
 | --- | --- | --- | --- |
 | Backend originale | `dvjhcdmuuuwepayaatup` | `.env`, `wrangler.toml` e `supabase/config.toml` del web; stesso riferimento nella copia Lovable | API raggiungibile; `volume_tables` e `volume_table_rows` restituiscono PGRST205 |
-| Supabase nostro, staging storico | `fyrzzuswjgtwoctovker` | `Cali-app/.env.staging.local`, `Cali-app/supabase/config.toml` e registro del 12 settembre | Endpoint non risolto dalla rete di verifica (ENOTFOUND); dashboard richiede accesso |
+| Supabase nostro, staging storico | `fyrzzuswjgtwoctovker` | `Cali-app/.env.staging.local`, `Cali-app/supabase/config.toml` e query amministrative | Riattivato, ACTIVE_HEALTHY; copia dati presente |
+| Supabase nostro, PoweApp | `nvumgczskawwykddxzth` | Elenco progetti e query amministrative | Riattivato, ACTIVE_HEALTHY; 1 account/profilo, nessuna scheda o pagamento |
+
+### Confronto prima dell’importazione (18 novembre)
+
+Conteggi dello staging ottenuti con `count(*)`, non con le stime delle tabelle.
+Conteggi dell'origine letti dalla vista Database del progetto Lovable
+`c0dd7586-bb07-41c0-9d0b-22323e4d8d72` (Calisthenics Hub 44).
+
+| Entita | Origine Lovable | Staging nostro |
+| --- | ---: | ---: |
+| Profili | 46 | 37 |
+| Schede | 161 | 89 |
+| Esercizi nelle schede | 2983 | 1664 |
+| Valutazioni/completamenti | 6508 | 3646 |
+| Pagamenti | 124 | 64 |
+| Abbonamenti | 58 | 38 |
+| Appuntamenti | 168 | 90 |
+
+Nello staging: 39 account Auth, 3 bucket, 0 oggetti Storage; la presenza di
+file nell'origine e ancora da verificare. I pagamenti arrivano al 20 luglio,
+le valutazioni al 22 luglio; l'ultimo login registrato risale al 4 settembre.
+Presenti create-user e reset-user-password. Assenti volume_tables e volume_table_rows.
+La tabella migrazioni dello staging e vuota, pur essendo presenti 26 tabelle
+pubbliche: non usare la sola cronologia migrazioni per dedurre lo schema applicato.
 
 Il registro storico distingue staging e nuova produzione. Il solo riferimento
 allo staging non dimostra che questo sia gia il progetto definitivo o che i dati
@@ -85,11 +112,27 @@ eseguite nei database remoti.
    la build e la configurazione dell'app distribuita.
 9. Dismettere Lovable solo dopo la verifica del passaggio e del recupero dati.
 
-## Accessi ancora mancanti
+## Accessi ed esportazione
 
-L'integrazione Supabase e stata individuata e proposta, ma non risulta ancora
-collegata. Il browser del progetto di destinazione e al login. Non e disponibile
-un export amministrativo dell'origine.
+L'integrazione Supabase e ora collegata e consente di gestire PoweApp e Staging.
+Entrambi erano sospesi e sono stati riattivati per ispezionare la copia esistente;
+query amministrative eseguite dopo ACTIVE_HEALTHY. Health advisors senza avvisi.
+
+La richiesta amministrativa a `dvjhcdmuuuwepayaatup` viene rifiutata per mancanza
+di permessi. L'accesso all'origine e invece disponibile dalla sessione browser
+Lovable gia autenticata. Sono state aperte le impostazioni di esportazione,
+senza modificare codice o dati applicativi originali.
+
+L’esportazione completa e stata autorizzata esplicitamente dall’utente, quindi
+eseguita nello Storage privato dell’origine e scaricata. Il file originale e in
+Downloads: urban-flow-gym_261118.backup.zip. La copia di lavoro, i dati Auth e il
+backup della destinazione sono nella cartella privata temporanea locale
+calisthenics-migration-20261119; nessun dato o hash password va aggiunto a Git.
+
+Nella cronologia Git sono presenti `83448c0` (finalize staging migration and mobile
+QA) in Cali-app e `fdf75f5` (sync definitive web app with mobile platform) nel
+ramo remoto web di sincronizzazione. Documentano lavoro pregresso sul codice;
+il confronto dei dati effettivi va completato dopo la riattivazione.
 
 ## Documentazione verificata
 
@@ -97,3 +140,80 @@ un export amministrativo dell'origine.
   export con struttura, dati e utenti; file Storage, codice Edge Functions,
   segreti e configurazione dei provider da gestire separatamente.
 - [Backup e ripristino Supabase](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore).
+
+## Operazioni concluse il 19 novembre
+
+- Backup privato prima della sincronizzazione: 30 tabelle, 6309 record.
+- Ripristino locale del backup originale e validazione dei vincoli di destinazione.
+- Prova locale della fusione con i dati precedenti dello staging, riuscita.
+- Importazione: 49 utenti e identita originali, 46 profili, 161 schede, 2983
+  esercizi delle schede, 6509 valutazioni, 124 pagamenti, 58 abbonamenti,
+  168 appuntamenti, 861 note di valutazione, 314 turni e altre tabelle originali.
+- Conservati i record esclusivi della destinazione e i campi aggiunti dall’app.
+- Account admin duplicato: utente ha scelto quello del sito originale. Conservati
+  UUID e hash password originali; account amministrativo dello staging archiviato
+  con email tecnica non recapitabile, ban permanente e ruolo privo dei permessi admin.
+  Originali di quell’account conservati nel backup locale prima della modifica.
+- Confronto di contenuto: tutte le 25 tabelle originali importate hanno la stessa
+  impronta del backup (timestamp normalizzati a UTC; updated_at escluso).
+- Applicata migrazione volume_intensity_tables allo staging; aggiunti i grant
+  espliciti per authenticated e controllo dell’identita nella funzione ausiliaria.
+- Test RLS locali e nello staging, con transazione annullata: admin crea;
+  coach assegnato legge e salva; coach estraneo e cliente esclusi; tentativo di
+  impersonare l’admin respinto; anon non legge righe. Nessun dato di test conservato.
+- Health advisor senza segnalazioni. Security advisor segnala permessi EXECUTE
+  su funzioni preesistenti, search_path di course_day_group e protezione password
+  compromesse disattivata. Verificare prima del passaggio definitivo.
+- L’origine continua a ricevere scritture: vista Lovable successiva all’import
+  mostra 2987 esercizi, 6528 valutazioni e 866 note. Recuperare il delta prima
+  di cambiare backend; non dichiarare la copia gia allineata in tempo reale.
+
+### Resta da completare
+
+Recupero delta, confronto delle policy e configurazioni Auth/Storage, funzioni
+amministrative, prova login con account originale, verifica web/app e piano di
+passaggio delle scritture. Nessuna modifica a URL/chiave pubblica del sito finora.
+
+## Delta del 19 novembre e verifiche finali della copia
+
+Snapshot corrente letto dall’editor SQL Lovable con sole SELECT, senza cambiare
+schema o dati dell’origine. La copia e ora a 2987 esercizi, 6530 valutazioni e
+866 note di valutazione. Importati 32 record nuovi/modificati: 5 esercizi,
+22 valutazioni e 5 note; nessuna cancellazione rilevata rispetto al backup.
+Verificati checksum dei blocchi delle valutazioni e nuovamente il contenuto di
+tutte le 25 tabelle importate: 25 confronti identici, escluso updated_at.
+L’origine continua a ricevere scritture: resta necessario un ultimo delta al
+momento del passaggio, con gestione coordinata dei client web/app ancora attivi.
+
+Aggiornate nello staging le Edge Functions create-user (supporto segretaria,
+JWT richiesto) e update-user-email (prima assente). Reset-user-password presente.
+Gli aggiornamenti non inviano email e non cambiano le password degli utenti.
+
+Applicata staging_function_access: revocato EXECUTE anon sulle funzioni
+privilegiate, fissato search_path di course_day_group, convertito il lookup Volume
+in SECURITY INVOKER. Collaudo Volume remoto nuovamente passato.
+
+### Due operazioni ancora in attesa
+
+1. Auth: integrazione e CLI non hanno accesso alla modifica della configurazione
+   Auth. Aperto dashboard Supabase in browser e richiesto login dell’utente.
+   Email/password e provider pubblici coincidono; nell’origine signup disabilitato,
+   nella destinazione ancora abilitato. Verificare Site URL, redirect, configurazione
+   email e protezione password compromesse prima del passaggio.
+2. Policy originali: preparata 20261119093950_staging_source_access.sql con
+   61 policy di accesso sulle 23 tabelle originali e 9 funzioni del backup.
+   Test locali passati, inclusa negazione dell’auto-promozione del cliente.
+   Revisione automatica ha rifiutato l’applicazione remota per l’ampiezza della
+   modifica dei permessi; autorizzazione specifica richiesta all’utente.
+   Questa migrazione NON e stata applicata. Il test sul vecchio staging conferma
+   la vulnerabilita: un cliente potrebbe cambiare il proprio ruolo. Tutti i dati
+   del test sono stati annullati; verificati 0 account sintetici e ruolo originale
+   del cliente invariato. NON usare questo staging come produzione prima del fix.
+
+Nessun nuovo ramo. Nessun cambio backend nel sito o nell’app distribuita.
+
+Verifiche esterne: sito originale HTTP 200; le tre funzioni amministrative
+rifiutano richieste senza autenticazione (401); API Volume anonima restituisce
+zero righe. Typecheck e build del web passati. Anteprima locale sulla porta 4173
+collegata allo staging tramite sole variabili del processo, senza cambiare .env
+o wrangler.toml.

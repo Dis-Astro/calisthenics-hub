@@ -33,6 +33,9 @@ CREATE INDEX IF NOT EXISTS idx_volume_table_rows_table ON public.volume_table_ro
 ALTER TABLE public.volume_tables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.volume_table_rows ENABLE ROW LEVEL SECURITY;
 
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON public.volume_tables, public.volume_table_rows TO authenticated;
+
 -- Solo admin e coach assegnato al cliente. Il cliente non vede queste tabelle.
 CREATE POLICY "Volume tabelle: admin o coach del cliente può vedere"
   ON public.volume_tables FOR SELECT TO authenticated
@@ -59,7 +62,7 @@ CREATE OR REPLACE FUNCTION public.can_manage_volume_table(user_uuid UUID, target
 RETURNS BOOLEAN
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
 AS $$
-  SELECT EXISTS (
+  SELECT user_uuid = auth.uid() AND EXISTS (
     SELECT 1 FROM public.volume_tables t
     WHERE t.id = target_table
       AND (public.is_admin(user_uuid) OR public.coach_manages_client(user_uuid, t.client_id))
