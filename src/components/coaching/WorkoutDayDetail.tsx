@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -103,7 +103,9 @@ const WorkoutDayDetail = () => {
   const planIdParam = searchParams.get("planId");
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
+  const savingRef = useRef(false);
   const [exercises, setExercises] = useState<ExerciseWithWeeks[]>([]);
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [currentWeek, setCurrentWeek] = useState(1);
@@ -143,115 +145,126 @@ const WorkoutDayDetail = () => {
 
   const fetchDayExercises = async () => {
     setLoading(true);
-    const userId = profile?.user_id;
-    const today = new Date().toISOString().split('T')[0];
+    setLoadError(false);
+    try {
+      const userId = profile?.user_id;
+      const today = new Date().toISOString().split('T')[0];
 
-    let plans: any[] | null = null;
+      let plans: any[] | null = null;
 
-    if (planIdParam) {
-      const { data } = await supabase
-        .from("workout_plans")
-        .select("id, name, start_date, end_date")
-        .eq("id", planIdParam)
-        .eq("client_id", userId)
-        .is("deleted_at" as any, null)
-        .limit(1);
-      plans = data;
-    } else {
-      // Solo schede ATTIVE nel range corrente
-      const { data: active } = await supabase
-        .from("workout_plans")
-        .select("id, name, start_date, end_date")
-        .eq("client_id", userId)
-        .eq("status", "attiva" as any)
-        .is("deleted_at" as any, null)
-        .lte("start_date", today)
-        .gte("end_date", today)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      plans = active;
-
-      // Fallback: ultima scheda attiva (anche scaduta)
-      if (!plans || plans.length === 0) {
-        const { data: recent } = await supabase
+      if (planIdParam) {
+        const { data, error } = await supabase
+          .from("workout_plans")
+          .select("id, name, start_date, end_date")
+          .eq("id", planIdParam)
+          .eq("client_id", userId)
+          .is("deleted_at" as any, null)
+          .limit(1);
+        if (error) throw error;
+        plans = data;
+      } else {
+        // Solo schede ATTIVE nel range corrente
+        const { data: active, error: activeError } = await supabase
           .from("workout_plans")
           .select("id, name, start_date, end_date")
           .eq("client_id", userId)
           .eq("status", "attiva" as any)
           .is("deleted_at" as any, null)
           .lte("start_date", today)
-          .order("end_date", { ascending: false })
+          .gte("end_date", today)
+          .order("created_at", { ascending: false })
           .limit(1);
-        plans = recent;
-      }
-    }
+        if (activeError) throw activeError;
+        plans = active;
 
-    if (!plans || plans.length === 0) {
-      setLoading(false);
-      return;
-    }
-
-    const activePlan = plans[0];
-    setPlan(activePlan);
-    
-    const weeks = calculateTotalWeeks(activePlan.start_date, activePlan.end_date);
-    const current = Math.min(calculateCurrentWeek(activePlan.start_date, activePlan.end_date), weeks);
-    setTotalWeeks(weeks);
-    setCurrentWeek(current);
-
-    const { data: planExercises } = await supabase
-      .from("workout_plan_exercises")
-      .select(`id, notes, rest_seconds, order_index, exercise_name, video:exercise_videos(id, title, video_url)`)
-      .eq("workout_plan_id", activePlan.id)
-      .eq("day_of_week", dayNumber)
-      .order("order_index");
-
-    if (planExercises) {
-      const exerciseIds = planExercises.map(e => e.id);
-      const [completionsRes, testNotesRes] = await Promise.all([
-        supabase
-          .from("workout_completions")
-          .select("*")
-          .eq("client_id", userId!)
-          .in("workout_plan_exercise_id", exerciseIds),
-        supabase
-          .from("coach_test_notes")
-          .select("*")
-          .in("workout_plan_exercise_id", exerciseIds)
-      ]);
-
-      const completions = completionsRes.data;
-      const testNotes = testNotesRes.data as CoachTestNote[] | null;
-
-      const exercisesWithWeeks: ExerciseWithWeeks[] = planExercises.map(ex => {
-        const existingCompletions = completions?.filter(c => c.workout_plan_exercise_id === ex.id) || [];
-        const weekCompletions: WeekCompletion[] = [];
-        for (let w = 1; w <= weeks; w++) {
-          const existing = existingCompletions.find(c => c.set_number === w);
-          weekCompletions.push({
-            id: existing?.id,
-            week_number: w,
-            client_notes: existing?.client_notes || "",
-            difficulty_rating: existing?.difficulty_rating || 0,
-            saved: !!existing
-          });
+        // Fallback: ultima scheda attiva (anche scaduta)
+        if (!plans || plans.length === 0) {
+          const { data: recent, error: recentError } = await supabase
+            .from("workout_plans")
+            .select("id, name, start_date, end_date")
+            .eq("client_id", userId)
+            .eq("status", "attiva" as any)
+            .is("deleted_at" as any, null)
+            .lte("start_date", today)
+            .order("end_date", { ascending: false })
+            .limit(1);
+          if (recentError) throw recentError;
+          plans = recent;
         }
+      }
 
-        const coachTestNote = testNotes?.find(n => n.workout_plan_exercise_id === ex.id);
+      if (!plans || plans.length === 0) {
+        setLoading(false);
+        return;
+      }
 
-        return {
-          ...ex,
-          exercise_name: (ex as any).exercise_name || "Esercizio",
-          video: ex.video as unknown as ExerciseVideo | null,
-          weekCompletions,
-          coachTestNote
-        };
-      });
+      const activePlan = plans[0];
+      setPlan(activePlan);
 
-      setExercises(exercisesWithWeeks);
+      const weeks = calculateTotalWeeks(activePlan.start_date, activePlan.end_date);
+      const current = Math.min(calculateCurrentWeek(activePlan.start_date, activePlan.end_date), weeks);
+      setTotalWeeks(weeks);
+      setCurrentWeek(current);
+
+      const { data: planExercises, error: exercisesError } = await supabase
+        .from("workout_plan_exercises")
+        .select(`id, notes, rest_seconds, order_index, exercise_name, video:exercise_videos(id, title, video_url)`)
+        .eq("workout_plan_id", activePlan.id)
+        .eq("day_of_week", dayNumber)
+        .order("order_index");
+      if (exercisesError) throw exercisesError;
+
+      if (planExercises) {
+        const exerciseIds = planExercises.map(e => e.id);
+        const [completionsRes, testNotesRes] = await Promise.all([
+          supabase
+            .from("workout_completions")
+            .select("*")
+            .eq("client_id", userId!)
+            .in("workout_plan_exercise_id", exerciseIds),
+          supabase
+            .from("coach_test_notes")
+            .select("*")
+            .in("workout_plan_exercise_id", exerciseIds)
+        ]);
+
+        const completions = completionsRes.data;
+        if (completionsRes.error) throw completionsRes.error;
+        const testNotes = testNotesRes.data as CoachTestNote[] | null;
+
+        const exercisesWithWeeks: ExerciseWithWeeks[] = planExercises.map(ex => {
+          const existingCompletions = completions?.filter(c => c.workout_plan_exercise_id === ex.id) || [];
+          const weekCompletions: WeekCompletion[] = [];
+          for (let w = 1; w <= weeks; w++) {
+            const existing = existingCompletions.find(c => c.set_number === w);
+            weekCompletions.push({
+              id: existing?.id,
+              week_number: w,
+              client_notes: existing?.client_notes || "",
+              difficulty_rating: existing?.difficulty_rating || 0,
+              saved: !!existing
+            });
+          }
+
+          const coachTestNote = testNotes?.find(n => n.workout_plan_exercise_id === ex.id);
+
+          return {
+            ...ex,
+            exercise_name: (ex as any).exercise_name || "Esercizio",
+            video: ex.video as unknown as ExerciseVideo | null,
+            weekCompletions,
+            coachTestNote
+          };
+        });
+
+        setExercises(exercisesWithWeeks);
+      }
+
+      setLoading(false);
+    } catch {
+      setLoadError(true);
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const toggleExercise = (exerciseId: string) => {
@@ -271,6 +284,7 @@ const WorkoutDayDetail = () => {
   };
 
   const saveWeekCompletion = async (exerciseId: string, weekNumber: number) => {
+    if (savingRef.current) return;
     const exercise = exercises.find(e => e.id === exerciseId);
     const weekData = exercise?.weekCompletions.find(w => w.week_number === weekNumber);
     if (!exercise || !weekData || !profile?.user_id) return;
@@ -280,40 +294,34 @@ const WorkoutDayDetail = () => {
       return;
     }
 
+    savingRef.current = true;
     setSaving(`${exerciseId}-${weekNumber}`);
 
     try {
-      if (weekData.id) {
-        await supabase.from("workout_completions").update({ client_notes: weekData.client_notes, difficulty_rating: weekData.difficulty_rating }).eq("id", weekData.id);
-      } else {
-        const { data } = await supabase.from("workout_completions").insert({
+      const { data, error } = await supabase.from("workout_completions").upsert({
           workout_plan_exercise_id: exerciseId,
           client_id: profile.user_id,
           set_number: weekNumber,
           client_notes: weekData.client_notes,
-          difficulty_rating: weekData.difficulty_rating
-        }).select().single();
-
-        if (data) {
-          setExercises(prev => prev.map(ex => {
-            if (ex.id !== exerciseId) return ex;
-            return { ...ex, weekCompletions: ex.weekCompletions.map(week => week.week_number !== weekNumber ? week : { ...week, id: data.id, saved: true }) };
-          }));
-        }
-      }
+          difficulty_rating: weekData.difficulty_rating || null
+        }, { onConflict: "workout_plan_exercise_id,client_id,set_number" }).select("id").single();
+      if (error) throw error;
+      if (!data) throw new Error("Nessuna valutazione salvata");
 
       toast.success("Salvato!");
       setExercises(prev => prev.map(ex => {
         if (ex.id !== exerciseId) return ex;
-        return { ...ex, weekCompletions: ex.weekCompletions.map(week => week.week_number !== weekNumber ? week : { ...week, saved: true }) };
+        return { ...ex, weekCompletions: ex.weekCompletions.map(week => week.week_number !== weekNumber ? week : {
+          ...week, id: data.id,
+          saved: week.client_notes === weekData.client_notes && week.difficulty_rating === weekData.difficulty_rating,
+        }) };
       }));
-
-      setOpenExercises(prev => { const newSet = new Set(prev); newSet.delete(exerciseId); return newSet; });
     } catch {
       toast.error("Errore nel salvataggio");
+    } finally {
+      savingRef.current = false;
+      setSaving(null);
     }
-
-    setSaving(null);
   };
 
   const getExerciseCompletionStatus = (exercise: ExerciseWithWeeks) => {
@@ -324,6 +332,13 @@ const WorkoutDayDetail = () => {
 
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  }
+
+  if (loadError) {
+    return <div role="alert" className="space-y-3 p-4">
+      <p>Impossibile caricare i commenti. Riprova prima di modificarli.</p>
+      <Button onClick={fetchDayExercises}>Riprova</Button>
+    </div>;
   }
 
   const commentsOpen = isCommentWindowOpen();
@@ -497,7 +512,7 @@ const WorkoutDayDetail = () => {
                             <div className="mb-3">
                               <Textarea placeholder="Note sulla settimana (opzionale)..." value={week.client_notes} onChange={(e) => updateWeekCompletion(exercise.id, week.week_number, 'client_notes', e.target.value)} className="min-h-[60px] resize-none" />
                             </div>
-                            <Button size="sm" onClick={() => saveWeekCompletion(exercise.id, week.week_number)} disabled={saving === `${exercise.id}-${week.week_number}`} className="w-full gap-2">
+                            <Button size="sm" onClick={() => saveWeekCompletion(exercise.id, week.week_number)} disabled={saving !== null} className="w-full gap-2">
                               {saving === `${exercise.id}-${week.week_number}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                               {week.saved ? "Aggiorna" : "Salva Valutazione"}
                             </Button>

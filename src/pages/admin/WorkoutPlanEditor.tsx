@@ -352,7 +352,7 @@ const WorkoutPlanEditor = () => {
     if (!planId) return;
     setSaving(true);
     const updateData: any = { status: newStatus, is_active: newStatus === "attiva" };
-    
+
     if (newStatus === "in_pausa") {
       updateData.paused_at = new Date().toISOString();
     } else if (newStatus === "attiva" && formData.status === "in_pausa") {
@@ -415,25 +415,37 @@ const WorkoutPlanEditor = () => {
       }
 
       const allDayExercises = days.flatMap(day => day.exercises.map(ex => ({ ...ex, day_of_week: day.day_number })));
-      const toDelete = allDayExercises.filter(e => e.isDeleted && e.id);
-      if (toDelete.length > 0) await supabase.from("workout_plan_exercises").delete().in("id", toDelete.map(e => e.id!));
+      try {
+        const toDelete = allDayExercises.filter(e => e.isDeleted && e.id);
+        if (toDelete.length > 0) {
+          const { error } = await supabase.from("workout_plan_exercises").delete().eq("workout_plan_id", planId!).in("id", toDelete.map(e => e.id!));
+          if (error) throw error;
+        }
 
-      const toUpdate = allDayExercises.filter(e => !e.isDeleted && !e.isNew && e.id);
-      for (const ex of toUpdate) {
-        await supabase.from("workout_plan_exercises").update({
-          exercise_id: null, exercise_name: ex.exercise_name_free.trim(),
-          day_of_week: ex.day_of_week, sets: null, reps: null, notes: null, order_index: ex.order_index,
-        }).eq("id", ex.id!);
-      }
+        const toUpdate = allDayExercises.filter(e => !e.isDeleted && !e.isNew && e.id);
+        for (const ex of toUpdate) {
+          // Mantiene identita, prescrizione e annotazioni non modificate dall'editor.
+          const { error } = await supabase.from("workout_plan_exercises").update({
+            exercise_name: ex.exercise_name_free.trim(),
+            day_of_week: ex.day_of_week, order_index: ex.order_index,
+          }).eq("workout_plan_id", planId!).eq("id", ex.id!).select("id").single();
+          if (error) throw error;
+        }
 
-      const toInsert = allDayExercises.filter(e => !e.isDeleted && e.isNew);
-      if (toInsert.length > 0) {
-        await supabase.from("workout_plan_exercises").insert(
-          toInsert.map(ex => ({
-            workout_plan_id: planId!, exercise_id: null, exercise_name: ex.exercise_name_free.trim(),
-            day_of_week: ex.day_of_week, sets: null, reps: null, notes: null, order_index: ex.order_index,
-          }))
-        );
+        const toInsert = allDayExercises.filter(e => !e.isDeleted && e.isNew);
+        if (toInsert.length > 0) {
+          const { error } = await supabase.from("workout_plan_exercises").insert(
+            toInsert.map(ex => ({
+              workout_plan_id: planId!, exercise_id: null, exercise_name: ex.exercise_name_free.trim(),
+              day_of_week: ex.day_of_week, sets: null, reps: null, notes: null, order_index: ex.order_index,
+            }))
+          );
+          if (error) throw error;
+        }
+      } catch {
+        toast({ title: "Modifiche non completate", description: "Errore nel salvataggio degli esercizi. Verifica la scheda prima di riprovare.", variant: "destructive" });
+        setSaving(false);
+        return;
       }
 
       // Sync test reminder appointment

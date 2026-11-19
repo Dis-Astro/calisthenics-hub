@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -55,8 +55,10 @@ const CoachTestNotesDialog = ({ planId, planName, trigger, onNotesUpdated }: Coa
   const [notes, setNotes] = useState<Map<string, CoachNote>>(new Map());
   const [openExercises, setOpenExercises] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const editVersion = useRef(0);
 
   useEffect(() => {
     if (open) loadData();
@@ -64,6 +66,7 @@ const CoachTestNotesDialog = ({ planId, planName, trigger, onNotesUpdated }: Coa
 
   const loadData = async () => {
     setLoading(true);
+    setLoadError(false);
     const [exRes, notesRes] = await Promise.all([
       supabase.from("workout_plan_exercises")
         .select("id, exercise_name, day_of_week, order_index")
@@ -73,6 +76,12 @@ const CoachTestNotesDialog = ({ planId, planName, trigger, onNotesUpdated }: Coa
         .select("id, workout_plan_exercise_id, note, rating")
         .eq("coach_id", profile?.user_id),
     ]);
+
+    if (exRes.error || notesRes.error) {
+      setLoadError(true);
+      setLoading(false);
+      return;
+    }
 
     if (exRes.data) setExercises(exRes.data);
 
@@ -94,6 +103,7 @@ const CoachTestNotesDialog = ({ planId, planName, trigger, onNotesUpdated }: Coa
   };
 
   const updateNote = (exerciseId: string, field: "note" | "rating", value: string | number) => {
+    editVersion.current += 1;
     setNotes(prev => {
       const map = new Map(prev);
       const existing = map.get(exerciseId) || { workout_plan_exercise_id: exerciseId, note: "", rating: 0 };
@@ -116,32 +126,33 @@ const CoachTestNotesDialog = ({ planId, planName, trigger, onNotesUpdated }: Coa
   };
 
   const handleSave = async () => {
-    if (!profile?.user_id) return;
+    if (!profile?.user_id || saving) return;
     setSaving(true);
-
-    const entries = Array.from(notes.entries());
-    for (const [exId, note] of entries) {
-      if (!note.note && !note.rating) continue;
-
-      if (note.id) {
-        await (supabase.from("coach_test_notes" as any) as any)
-          .update({ note: note.note || null, rating: note.rating || null, updated_at: new Date().toISOString() })
-          .eq("id", note.id);
-      } else {
-        await (supabase.from("coach_test_notes" as any) as any)
-          .insert({
-            workout_plan_exercise_id: exId,
-            coach_id: profile.user_id,
-            note: note.note || null,
-            rating: note.rating || null,
-          });
+    const version = editVersion.current;
+    try {
+      const entries = Array.from(notes.entries()).filter(([, note]) => note.id || note.note || note.rating);
+      if (entries.length) {
+        const { data, error } = await supabase.from("coach_test_notes").upsert(entries.map(([exId, note]) => ({
+          workout_plan_exercise_id: exId,
+          coach_id: profile.user_id,
+          note: note.note || null,
+          rating: note.rating || null,
+          updated_at: new Date().toISOString(),
+        })), { onConflict: "workout_plan_exercise_id,coach_id" }).select("id,workout_plan_exercise_id");
+        if (error) throw error;
+        if (data?.length !== entries.length) throw new Error("Note non salvate");
+        setNotes(prev => new Map(Array.from(prev, ([id, note]) => [id, {
+          ...note, id: data.find(row => row.workout_plan_exercise_id === id)?.id ?? note.id,
+        }])));
       }
+      toast({ title: "Note test salvate!" });
+      if (editVersion.current === version) setDirty(false);
+      onNotesUpdated?.();
+    } catch {
+      toast({ title: "Note non salvate", description: "Le modifiche restano aperte: riprova il salvataggio.", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
-
-    toast({ title: "Note test salvate!" });
-    setDirty(false);
-    setSaving(false);
-    onNotesUpdated?.();
   };
 
   const exercisesByDay = exercises.reduce((acc, ex) => {
@@ -183,6 +194,11 @@ const CoachTestNotesDialog = ({ planId, planName, trigger, onNotesUpdated }: Coa
 
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+        ) : loadError ? (
+          <div role="alert" className="space-y-2">
+            <p>Impossibile caricare le note. Riprova prima di modificarle.</p>
+            <Button onClick={loadData}>Riprova</Button>
+          </div>
         ) : (
           <div className="flex-1 overflow-y-auto space-y-2 pr-1">
             {Object.entries(exercisesByDay).sort(([a], [b]) => Number(a) - Number(b)).map(([day, exs]) => (
@@ -237,7 +253,7 @@ const CoachTestNotesDialog = ({ planId, planName, trigger, onNotesUpdated }: Coa
           </div>
         )}
 
-        {!loading && (
+        {!loading && !loadError && (
           <div className="pt-2 border-t">
             <Button onClick={handleSave} disabled={saving || !dirty} className="w-full gap-2">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
