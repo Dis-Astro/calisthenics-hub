@@ -226,3 +226,28 @@ staging_source_access. Il precedente blocco della revisione automatica e risolto
 Il test remoto ora conferma che il cliente non puo promuoversi amministratore;
 modifica del proprio nome consentita e test Volume per tutti i ruoli riusciti.
 Transazione di prova annullata. Il sito e ancora collegato a Lovable.
+
+## Volume & Intensita attivate nel database del sito — 19 novembre
+
+Su richiesta esplicita dell’utente di completare autonomamente l’attivazione,
+create volume_tables e volume_table_rows anche nel database Lovable attualmente
+usato da superpowegym.it (dvjhcdmuuuwepayaatup). Eseguita sola DDL additiva dal
+pannello SQL originale: tabelle, indici, 8 policy RLS, grant authenticated e
+2 trigger. Helper can_manage_volume_table in SECURITY INVOKER con controllo
+user_uuid = auth.uid(). Non applicata la migrazione generale delle funzioni
+app-only dello staging all’origine. Cache PostgREST ricaricata con NOTIFY.
+
+Preflight: entrambe assenti, nessuna policy Volume preesistente, helper necessari
+presenti con EXECUTE authenticated. Nessuna cancellazione di dati nello script.
+
+Collaudo nel database effettivo: admin crea tabella/riga, coach assegnato legge,
+modifica celle e date e crea una tabella; coach estraneo e cliente non leggono o
+scrivono; tentativo di impersonare admin respinto; anon escluso. Prova conclusa
+con ROLLBACK e controlli 0 account, 0 tabelle e 0 righe di test residui.
+Entrambi gli endpoint REST ora rispondono 200: errore PGRST205 risolto.
+
+Il sito continua a usare lo stesso backend. La migrazione finale resta separata.
+**Al prossimo delta includere anche volume_tables e volume_table_rows: i nuovi
+contenuti Volume inseriti dall’utente vengono ora salvati nell’origine. Non
+riutilizzare l’elenco statico delle 25 tabelle del precedente export**, che era
+anteriore alla creazione di queste due tabelle.
