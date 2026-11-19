@@ -217,3 +217,12 @@ rifiutano richieste senza autenticazione (401); API Volume anonima restituisce
 zero righe. Typecheck e build del web passati. Anteprima locale sulla porta 4173
 collegata allo staging tramite sole variabili del processo, senza cambiare .env
 o wrangler.toml.
+
+## Autorizzazione e applicazione delle policy
+
+L’utente ha autorizzato esplicitamente l’allineamento delle 61 policy sulle
+23 tabelle e delle 9 funzioni nello staging. Applicata con successo la migrazione
+staging_source_access. Il precedente blocco della revisione automatica e risolto.
+Il test remoto ora conferma che il cliente non puo promuoversi amministratore;
+modifica del proprio nome consentita e test Volume per tutti i ruoli riusciti.
+Transazione di prova annullata. Il sito e ancora collegato a Lovable.
