@@ -261,7 +261,7 @@ comuni sono quindi gia condivisi: non occorre una replica tra due database per
 questi due siti. Questo non significa che lo staging nostro sia sincronizzato
 continuamente, ne che sia stato eseguito il passaggio da Lovable.
 
-I frontend sono diversi: al controllo il test distribuisce index-DqOPVD8W.js,
+I frontend sono diversi: al controllo iniziale il test distribuisce index-DqOPVD8W.js,
 l'originale index-BDHV1ozU.js. Solo il test contiene Volume & Intensita e le
 correzioni dei salvataggi del 19 novembre. Nessuna modifica alla repository
 calisthenics-hub-44 durante questa verifica.
@@ -274,3 +274,11 @@ Verificati 21 test, typecheck e build; lint sui componenti modificati senza erro
 (avvisi preesistenti nell'editor). Prova browser locale con dati dimostrativi:
 colonna da circa 300 px a desktop, mobile 390 px, cambio vista e ritorno al desktop
 con stessi valori e bozza della scheda. Il collaudo visuale non ha scritto dati reali.
+
+Commit 53cf1d6 caricato sullo stesso ramo. Cloudflare Pages ha completato con
+successo il deploy 33852275-e335-4667-ab97-0eed43ce4d31. Superpowegym.it e la
+relativa anteprima servono index-C0_6uPvS.js e il nuovo pulsante nell'editor.
+Superpowergym.it serve ancora index-BDHV1ozU.js e non include il pulsante.
+Confermato di nuovo lo stesso riferimento backend nei due siti. Richiesto
+chiarimento sul rilascio anche nell'originale, dato il precedente vincolo
+esplicito di lasciare ferma la repository calisthenics-hub-44.
