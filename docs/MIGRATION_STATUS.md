@@ -1,6 +1,6 @@
 # Migrazione da Lovable al Supabase di proprieta
 
-Stato aggiornato il 19 novembre 2026. Il sito usa ancora il backend Lovable.
+Stato aggiornato il 20 novembre 2026. Il sito usa ancora il backend Lovable.
 Importato nello staging nostro il backup completo del 18 novembre, ore 15:24 UTC.
 Verificato il contenuto di tutte le 25 tabelle importate con conteggi e impronte
 identiche al backup, escluso updated_at applicativo. Il passaggio del sito non e
@@ -251,3 +251,26 @@ Il sito continua a usare lo stesso backend. La migrazione finale resta separata.
 contenuti Volume inseriti dall’utente vengono ora salvati nell’origine. Non
 riutilizzare l’elenco statico delle 25 tabelle del precedente export**, che era
 anteriore alla creazione di queste due tabelle.
+
+## Verifica dei due siti — 20 novembre
+
+Verificati gli asset distribuiti: superpowegym.it (test, progetto Pages
+calisthenics-hub) e superpowergym.it (sito originale, progetto Pages
+calisthenics-hub-44) usano entrambi dvjhcdmuuuwepayaatup. I dati delle funzionalita
+comuni sono quindi gia condivisi: non occorre una replica tra due database per
+questi due siti. Questo non significa che lo staging nostro sia sincronizzato
+continuamente, ne che sia stato eseguito il passaggio da Lovable.
+
+I frontend sono diversi: al controllo il test distribuisce index-DqOPVD8W.js,
+l'originale index-BDHV1ozU.js. Solo il test contiene Volume & Intensita e le
+correzioni dei salvataggi del 19 novembre. Nessuna modifica alla repository
+calisthenics-hub-44 durante questa verifica.
+
+Preparato sul ramo gia in uso il cambio vista Test & Note / Volume & Intensita
+nell'editor schede. La variante compatta usa le stesse tabelle per client_id del
+profilo, senza copie per scheda. Test e Volume restano montati cambiando vista o
+dimensione schermo, cosi bozze e salvataggi in attesa vengono conservati.
+Verificati 21 test, typecheck e build; lint sui componenti modificati senza errori
+(avvisi preesistenti nell'editor). Prova browser locale con dati dimostrativi:
+colonna da circa 300 px a desktop, mobile 390 px, cambio vista e ritorno al desktop
+con stessi valori e bozza della scheda. Il collaudo visuale non ha scritto dati reali.

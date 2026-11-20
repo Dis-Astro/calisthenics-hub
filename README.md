@@ -83,7 +83,12 @@ Le tabelle sono indipendenti dalla creazione delle schede e dei test:
 - Coach: aprire **I miei clienti** e premere **Volume & Intensità** sul cliente assegnato.
 
 E' disponibile anche se il cliente non ha alcuna scheda di allenamento.
-Le tabelle non compaiono nell'editor delle schede.
+Nell'editor di creazione e modifica delle schede, il pulsante **Mostra Volume &
+Intensità** nel pannello **Test & Note** sostituisce il contenuto del pannello con
+la vista compatta delle stesse tabelle del cliente. **Torna a Test & Note** ripristina
+i test selezionati senza azzerare la bozza della scheda. Su mobile il comando si
+trova nella scheda **Test / Volume**. Le fasce sono disposte in verticale nella
+vista compatta, con data e valore modificabili e lo stesso salvataggio automatico.
 
 Prima di distribuire il frontend aggiornato, applicare al database Supabase
 dell'ambiente scelto la migrazione

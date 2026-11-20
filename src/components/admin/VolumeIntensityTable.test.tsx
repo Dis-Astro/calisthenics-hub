@@ -44,6 +44,22 @@ async function openTable() {
 }
 
 describe("VolumeIntensityTable", () => {
+  it("usa le stesse celle e lo stesso salvataggio nella vista compatta senza una tabella larga", async () => {
+    render(<VolumeIntensityTable clientId="client" compact />);
+    await screen.findByDisplayValue("Trazioni");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    for (const label of ["10%-30%", "40%-60%", "50%-70%", "60%-80%", "90%-100%", "TOT."]) {
+      expect(screen.getByRole("textbox", { name: `Volume ${label}` })).toBeInTheDocument();
+      expect(screen.getByLabelText(`Data ${label}`)).toBeInTheDocument();
+    }
+    const cell = screen.getByRole("textbox", { name: "Volume 90%-100%" });
+    fireEvent.change(cell, { target: { value: "3x1" } });
+    await act(async () => { fireEvent.blur(cell); });
+    expect(mocks.save).toHaveBeenCalledWith("volume_table_rows", "latest", { cells: { band_90_100: "3x1" } });
+    fireEvent.click(screen.getByRole("switch", { name: /Mostra precedenti/ }));
+    expect(screen.getByDisplayValue("Settimana precedente")).toBeInTheDocument();
+  });
+
   it("blocks creation when the database tables are missing and supports reloading after activation", async () => {
     mocks.loadError = { code: "PGRST205", message: "Missing table" };
     render(<VolumeIntensityTable clientId="client" />);

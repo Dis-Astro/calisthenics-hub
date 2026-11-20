@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import ExerciseNameInput from "@/components/admin/ExerciseNameInput";
+import WorkoutPlanReferencePanel from "@/components/admin/WorkoutPlanReferencePanel";
 import LightningRating from "@/components/coaching/LightningRating";
 import { Slider } from "@/components/ui/slider";
 import { 
@@ -36,7 +37,6 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { syncTestReminderAppointment } from "@/lib/testReminder";
 
 const COLOR_MAP: Record<string, string> = {
@@ -103,7 +103,6 @@ const WorkoutPlanEditor = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { toast } = useToast();
-  const isMobile = useIsMobile();
 
   const isEditing = !!planId;
   const [planType, setPlanType] = useState(requestedPlanType);
@@ -879,35 +878,41 @@ const WorkoutPlanEditor = () => {
     ? (isTest ? `Modifica Test — ${clientName}` : `Modifica Scheda — ${clientName}`)
     : (isTest ? `Nuovo Test — ${clientName}` : `Nuova Scheda — ${clientName}`);
 
+  const referencePanel = userId ? (
+    <WorkoutPlanReferencePanel clientId={userId} testSelector={tests.length > 0 ? (
+      <Select value={selectedRightTestId} onValueChange={setSelectedRightTestId}>
+        <SelectTrigger className="h-7 text-xs">
+          <SelectValue placeholder="Seleziona test..." />
+        </SelectTrigger>
+        <SelectContent>
+          {tests.map(test => (
+            <SelectItem key={test.id} value={test.id} className="text-xs">
+              {test.name} — {format(new Date(test.start_date), "d MMM yy", { locale: it })}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    ) : undefined}>
+      {renderTests()}
+    </WorkoutPlanReferencePanel>
+  ) : null;
+
   return (
     <AdminLayout title={pageTitle} icon={<Dumbbell className="w-6 h-6" />} showBackLink hideSidebar>
       <Button variant="ghost" onClick={() => navigate(`/admin/utenti/${userId}`)} className="mb-4 gap-2">
         <ArrowLeft className="w-4 h-4" />Torna al profilo
       </Button>
 
-      {isMobile ? (
-        /* ─── Mobile: Tabbed Layout ─── */
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3 mb-4">
+      {/* One mounted layout keeps pending Volume edits alive across screen sizes. */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="mb-4 grid w-full grid-cols-3 md:hidden">
             <TabsTrigger value="previous">Precedente</TabsTrigger>
             <TabsTrigger value="editor">Editor</TabsTrigger>
-            <TabsTrigger value="tests">Test</TabsTrigger>
+            <TabsTrigger value="tests">Test / Volume</TabsTrigger>
           </TabsList>
-          <TabsContent value="previous">
-            <Card><CardContent className="p-4">{renderPreviousPlan()}</CardContent></Card>
-          </TabsContent>
-          <TabsContent value="editor">
-            {renderEditor()}
-          </TabsContent>
-          <TabsContent value="tests">
-            <Card><CardContent className="p-4">{renderTests()}</CardContent></Card>
-          </TabsContent>
-        </Tabs>
-      ) : (
-        /* ─── Desktop: Three-Column Layout ─── */
-        <div className="grid grid-cols-12 gap-4">
+        <div className="gap-4 md:grid md:grid-cols-12">
           {/* Left: Previous Plan + Feedback */}
-          <div className="col-span-3">
+          <TabsContent value="previous" forceMount className="min-w-0 data-[state=inactive]:hidden md:col-span-3 md:mt-0 md:data-[state=inactive]:block">
             <Card>
               <div className="bg-muted px-4 py-2 border-b space-y-1.5">
                 <h3 className="font-display text-sm tracking-wider flex items-center gap-2">
@@ -933,53 +938,29 @@ const WorkoutPlanEditor = () => {
                 {renderPreviousPlan()}
               </CardContent>
             </Card>
-          </div>
+          </TabsContent>
 
           {/* Center: Editor */}
-          <div className="col-span-6">
-            <Card>
-              <div className="bg-muted px-4 py-2 border-b">
+          <TabsContent value="editor" forceMount className="min-w-0 data-[state=inactive]:hidden md:col-span-6 md:mt-0 md:data-[state=inactive]:block">
+            <Card className="border-0 shadow-none md:border md:shadow-sm">
+              <div className="hidden border-b bg-muted px-4 py-2 md:block">
                 <h3 className="font-display text-sm tracking-wider flex items-center gap-2">
                   <Dumbbell className="w-4 h-4 text-primary" />
                   {isEditing ? (isTest ? "Modifica Test" : "Modifica Scheda") : (isTest ? "Nuovo Test" : "Nuova Scheda")}
                 </h3>
               </div>
-              <CardContent className="p-4 max-h-[calc(100vh-220px)] overflow-y-auto">
+              <CardContent className="p-0 md:max-h-[calc(100vh-220px)] md:overflow-y-auto md:p-4">
                 {renderEditor()}
               </CardContent>
             </Card>
-          </div>
+          </TabsContent>
 
-          {/* Right: Tests / Notes */}
-          <div className="col-span-3">
-            <Card>
-              <div className="bg-muted px-4 py-2 border-b space-y-1.5">
-                <h3 className="font-display text-sm tracking-wider flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-primary" />
-                  Test & Note
-                </h3>
-                {tests.length > 0 && (
-                  <Select value={selectedRightTestId} onValueChange={setSelectedRightTestId}>
-                    <SelectTrigger className="h-7 text-xs">
-                      <SelectValue placeholder="Seleziona test..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tests.map(t => (
-                        <SelectItem key={t.id} value={t.id} className="text-xs">
-                          {t.name} — {format(new Date(t.start_date), "d MMM yy", { locale: it })}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-              <CardContent className="p-3 max-h-[calc(100vh-260px)] overflow-y-auto">
-                {renderTests()}
-              </CardContent>
-            </Card>
-          </div>
+          {/* Right: Tests / Notes or client Volume & Intensity */}
+          <TabsContent value="tests" forceMount className="min-w-0 data-[state=inactive]:hidden md:col-span-3 md:mt-0 md:data-[state=inactive]:block">
+            {referencePanel}
+          </TabsContent>
         </div>
-      )}
+      </Tabs>
     </AdminLayout>
   );
 };

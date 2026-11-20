@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -72,6 +72,7 @@ type DeleteTarget = { kind: "table" | "row"; id: string } | null;
 
 interface Props {
   clientId: string;
+  compact?: boolean;
 }
 
 /**
@@ -82,7 +83,8 @@ interface Props {
  * - "Mostra precedenti": di default ogni tabella mostra solo l'ultima sessione di lavoro
  * Tutto si salva da solo mentre si scrive. I valori li scrive solo il coach.
  */
-const VolumeIntensityTable = ({ clientId }: Props) => {
+const VolumeIntensityTable = ({ clientId, compact = false }: Props) => {
+  const instanceId = useId();
   const { user } = useAuth();
   const { toast } = useToast();
   const [tables, setTables] = useState<VolumeTable[]>([]);
@@ -277,7 +279,7 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
     setBusy(false);
     setTables(prev => [...prev, data]);
     if (firstRow) setRows(prev => [firstRow, ...prev]);
-    window.setTimeout(() => document.getElementById(`volume-title-${data.id}`)?.focus(), 50);
+    window.setTimeout(() => document.getElementById(`${instanceId}-volume-title-${data.id}`)?.focus(), 50);
   };
 
   const confirmDelete = async () => {
@@ -346,12 +348,12 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* Barra superiore: storico + nuova tabella */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Switch id="volume-history" checked={showHistory} onCheckedChange={setShowHistory} />
-          <Label htmlFor="volume-history" className="text-xs cursor-pointer">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Switch id={`${instanceId}-volume-history`} checked={showHistory} onCheckedChange={setShowHistory} />
+          <Label htmlFor={`${instanceId}-volume-history`} className="text-xs cursor-pointer">
             Mostra precedenti{!showHistory && hiddenTotal > 0 ? ` (${hiddenTotal} nascoste)` : ""}
           </Label>
         </div>
@@ -359,7 +361,7 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
           onClick={addTable}
           disabled={busy}
           size="icon"
-          className="h-10 w-10 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-md"
+          className={`${compact ? "h-8 w-8" : "h-10 w-10"} shrink-0 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-md`}
           aria-label="Nuova tabella"
           title="Nuova tabella"
         >
@@ -379,15 +381,15 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
         return (
           <div key={table.id} className="rounded-md border">
             {/* Testata tabella: nome, + riga, elimina tabella */}
-            <div className="flex items-center gap-2 border-b bg-muted px-2 py-1.5">
+            <div className={`flex items-center gap-2 border-b bg-muted px-2 py-1.5 ${compact ? "flex-wrap" : ""}`}>
               <Input
-                id={`volume-title-${table.id}`}
+                id={`${instanceId}-volume-title-${table.id}`}
                 value={table.title}
                 onChange={e => updateTitle(table.id, e.target.value)}
                 onBlur={() => flushNow("volume_tables", table.id)}
                 placeholder="Nome tabella (es. Trazioni)"
                 aria-label="Nome tabella"
-                className="h-8 max-w-xs border-0 bg-transparent font-display tracking-wider text-sm shadow-none focus-visible:ring-1"
+                className={`h-8 min-w-0 border-0 bg-transparent font-display tracking-wider text-sm shadow-none focus-visible:ring-1 ${compact ? "w-full" : "max-w-xs"}`}
               />
               {status(table.id)}
               <div className="ml-auto flex items-center gap-1">
@@ -407,6 +409,58 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
               </div>
             </div>
 
+            {compact ? (
+              <div className="divide-y-2">
+                {group.visible.map(row => (
+                  <div key={row.id} className="min-w-0">
+                    <div className="flex items-start gap-1 border-b px-2 py-1">
+                      <div className="min-w-0 flex-1">
+                        <Textarea
+                          value={row.label}
+                          aria-label="Etichetta volume"
+                          onChange={e => updateRowLabel(row.id, e.target.value)}
+                          onBlur={() => flushNow("volume_table_rows", row.id)}
+                          className="min-h-8 resize-none border-0 bg-transparent p-1 font-display text-xs tracking-wider text-red-600 shadow-none focus-visible:ring-1"
+                          style={autoHeight}
+                        />
+                        <div className="px-1">{status(row.id)}</div>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive"
+                        onClick={() => setDeleteTarget({ kind: "row", id: row.id })}
+                        aria-label="Elimina riga" title="Elimina riga">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    {COLUMNS.map(col => (
+                      <div key={col.key} className="min-w-0 border-b p-2 last:border-b-0">
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                          <div>
+                            <span className="font-display text-xs tracking-wide text-red-600">{col.label}</span>
+                            {col.sub && <div className="text-[10px] text-muted-foreground">{col.sub}</div>}
+                          </div>
+                          <Input
+                            type="date" aria-label={`Data ${col.label}`}
+                            value={row.dates[col.key] ?? ""}
+                            onChange={e => updateRowMap(row.id, "dates", col.key, e.target.value)}
+                            onBlur={() => flushNow("volume_table_rows", row.id)}
+                            className="h-7 min-w-0 w-[124px] max-w-full px-1 text-[11px] shadow-none"
+                          />
+                        </div>
+                        <Textarea
+                          value={row.cells[col.key] ?? ""}
+                          aria-label={`Volume ${col.label}`}
+                          onChange={e => updateRowMap(row.id, "cells", col.key, e.target.value)}
+                          onBlur={() => flushNow("volume_table_rows", row.id)}
+                          placeholder="—"
+                          className="mt-1 min-h-12 min-w-0 resize-y px-2 py-1 text-xs leading-snug shadow-none"
+                          style={autoHeight}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse text-sm">
                 <thead>
@@ -485,6 +539,7 @@ const VolumeIntensityTable = ({ clientId }: Props) => {
                 ))}
               </table>
             </div>
+            )}
 
             {group.hidden > 0 && (
               <button
