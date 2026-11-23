@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+﻿import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, parseISO, addHours } from "date-fns";
 
 export function getReminderAppointmentCopy(params: {
@@ -51,7 +51,7 @@ export async function syncTestReminderAppointment(params: {
 
   const existingAppointmentId = planRow?.reminder_appointment_id;
 
-  // Se preavviso disattivato → elimina eventuale appuntamento e svuota riferimento
+  // Se preavviso disattivato ÔåÆ elimina eventuale appuntamento e svuota riferimento
   if (!reminderDays || reminderDays <= 0) {
     if (existingAppointmentId) {
       await supabase.from("appointments").delete().eq("id", existingAppointmentId);
@@ -92,7 +92,7 @@ export async function syncTestReminderAppointment(params: {
     endDate,
   });
 
-  // IMPORTANTE: niente client_id → l'appuntamento resta privato del coach
+  // IMPORTANTE: niente client_id ÔåÆ l'appuntamento resta privato del coach
   // (le RLS appointments rendono visibili al cliente solo gli appuntamenti dove client_id = auth.uid()).
   const appointmentData = {
     coach_id: coachId,

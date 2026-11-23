@@ -3,5 +3,6 @@ compatibility_date = "2026-06-17"
 pages_build_output_dir = "./dist"
 
 [vars]
+VITE_SUPABASE_PROJECT_ID = "fyrzzuswjgtwoctovker"
 VITE_SUPABASE_URL = "https://fyrzzuswjgtwoctovker.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_WH0MLtajxGQjiHweYj_nYw_R2PPpxGw"

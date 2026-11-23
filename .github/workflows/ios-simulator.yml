@@ -1,0 +1,156 @@
+name: iOS Simulator Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "resources/**"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.ts"
+      - "ios/**"
+      - ".github/workflows/ios-simulator.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "public/**"
+      - "resources/**"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.ts"
+      - "ios/**"
+      - ".github/workflows/ios-simulator.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke-test:
+    name: Build and launch on iPhone Simulator
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      VITE_SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID || 'fyrzzuswjgtwoctovker' }}
+      VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://fyrzzuswjgtwoctovker.supabase.co' }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_WH0MLtajxGQjiHweYj_nYw_R2PPpxGw' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Test offline synchronization logic
+        run: npm test -- src/lib/offlineSync.test.ts
+
+      - name: Build React application
+        run: npm run build
+
+      - name: Synchronize the iOS project
+        run: npx cap sync ios
+
+      - name: Build for iPhone Simulator
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build
+          if [ -d ios/App/App.xcworkspace ]; then
+            xcodebuild \
+              -workspace ios/App/App.xcworkspace \
+              -scheme App \
+              -configuration Debug \
+              -sdk iphonesimulator \
+              -destination 'generic/platform=iOS Simulator' \
+              -derivedDataPath build/DerivedData \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              build | tee build/xcodebuild.log
+          else
+            xcodebuild \
+              -project ios/App/App.xcodeproj \
+              -scheme App \
+              -configuration Debug \
+              -sdk iphonesimulator \
+              -destination 'generic/platform=iOS Simulator' \
+              -derivedDataPath build/DerivedData \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              build | tee build/xcodebuild.log
+          fi
+
+      - name: Launch application in Simulator
+        shell: bash
+        run: |
+          APP_PATH="build/DerivedData/Build/Products/Debug-iphonesimulator/App.app"
+          APP_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Info.plist")
+          DEVICE_UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for runtime in d.values() for x in runtime if x['name'].startswith('iPhone')))" )
+          xcrun simctl boot "$DEVICE_UDID" || true
+          SIMULATOR_READY=0
+          for attempt in $(seq 1 90); do
+            SIMULATOR_STATE=$(xcrun simctl list devices -j | python3 -c "import json,sys; target='$DEVICE_UDID'; d=json.load(sys.stdin)['devices']; print(next((x['state'] for runtime in d.values() for x in runtime if x['udid'] == target), 'Missing'))")
+            if [ "$SIMULATOR_STATE" = "Booted" ]; then
+              SIMULATOR_READY=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$SIMULATOR_READY" -ne 1 ]; then
+            echo "Il simulatore non si è avviato entro 180 secondi."
+            exit 1
+          fi
+          for attempt in 1 2 3; do
+            if xcrun simctl install "$DEVICE_UDID" "$APP_PATH"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep 5
+          done
+          xcrun simctl launch "$DEVICE_UDID" "$APP_BUNDLE_ID"
+          sleep 5
+          xcrun simctl launch --terminate-running-process "$DEVICE_UDID" "$APP_BUNDLE_ID"
+          sleep 15
+
+          for attempt in 1 2 3; do
+            xcrun simctl io "$DEVICE_UDID" screenshot build/simulator-screenshot.png
+            SCREENSHOT_BYTES=$(stat -f%z build/simulator-screenshot.png)
+            if [ "$SCREENSHOT_BYTES" -gt 150000 ]; then
+              break
+            fi
+            echo "Screenshot non ancora pronto (tentativo $attempt, $SCREENSHOT_BYTES byte)."
+            xcrun simctl launch --terminate-running-process "$DEVICE_UDID" "$APP_BUNDLE_ID"
+            sleep 10
+          done
+
+          test "$(stat -f%z build/simulator-screenshot.png)" -gt 150000
+
+      - name: Package simulator application
+        shell: bash
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/DerivedData/Build/Products/Debug-iphonesimulator/App.app \
+            build/SuperPowerGym-Simulator.zip
+          tar --exclude='ios/App/Pods' --exclude='ios/App/build' -czf build/SuperPowerGym-XcodeProject.tar.gz ios
+
+      - name: Upload build results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: super-power-gym-ios-simulator
+          path: |
+            build/SuperPowerGym-Simulator.zip
+            build/SuperPowerGym-XcodeProject.tar.gz
+            build/simulator-screenshot.png
+            build/xcodebuild.log
+          if-no-files-found: warn
+          retention-days: 14
