@@ -12,6 +12,7 @@ import {
   X,
   ClipboardList,
   MessageSquare,
+  Mic,
   ChevronRight,
   Loader2
 } from "lucide-react";

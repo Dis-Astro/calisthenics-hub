@@ -23,3 +23,10 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+
+# Mobile (Capacitor)
+.env
+.env.*
+!.env.example
+ios/App/Pods
+build

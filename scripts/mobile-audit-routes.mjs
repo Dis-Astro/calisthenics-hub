@@ -1,0 +1,41 @@
+export const publicRoutes = [
+  ['/', '01-home'],
+  ['/contatti', '02-contatti'],
+  ['/login', '03-login'],
+];
+
+export const roleRoutes = {
+  admin: [
+    ['/admin', '10-admin-dashboard'],
+    ['/admin/utenti', '11-admin-utenti'],
+    ['/admin/abbonamenti', '12-admin-abbonamenti'],
+    ['/admin/calendario', '13-admin-calendario'],
+    ['/admin/corsi', '14-admin-corsi'],
+    ['/admin/orari', '15-admin-orari'],
+    ['/admin/piani', '16-admin-piani'],
+    ['/admin/segnalazioni', '17-admin-segnalazioni'],
+    ['/admin/spese', '18-admin-spese'],
+    ['/admin/andamento-struttura', '19-admin-andamento'],
+    ['/admin/utenti/nuovo', '20-admin-nuovo-utente-dialog'],
+    ['/admin/audio-timer', '21-admin-audio-timer'],
+  ],
+  coach: [
+    ['/coach', '20-coach-dashboard'],
+    ['/coach/clienti', '21-coach-clienti'],
+    ['/coach/schede', '22-coach-schede'],
+    ['/coach/calendario', '23-coach-calendario'],
+    ['/coach/segnalazioni', '24-coach-segnalazioni'],
+    ['/coach/audio-timer', '25-coach-audio-timer'],
+  ],
+  cliente_coaching: [
+    ['/coaching', '30-coaching-dashboard'],
+    ['/coaching/scheda', '31-coaching-scheda'],
+    ['/coaching/archivio', '32-coaching-archivio'],
+    ['/coaching/progressi', '33-coaching-progressi'],
+    ['/coaching/appuntamenti', '34-coaching-appuntamenti'],
+    ['/coaching/documenti', '35-coaching-documenti'],
+    ['/coaching/segnala', '36-coaching-segnala'],
+  ],
+  cliente_palestra: [['/palestra', '40-palestra-dashboard']],
+  cliente_corso: [['/palestra', '40-palestra-dashboard']],
+};

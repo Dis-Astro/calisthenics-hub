@@ -3,8 +3,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/hooks/useAuth";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import NavigationMemory from "@/components/NavigationMemory";
+import NotificationRouter from "@/components/NotificationRouter";
+import { readNavigation } from "@/lib/navigationMemory";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import PageLoader from "@/components/PageLoader";
 import type { Database } from "@/integrations/supabase/types";
@@ -14,11 +18,13 @@ type UserRole = Database["public"]["Enums"]["user_role"];
 const Index = lazy(() => import("./pages/Index"));
 const Contatti = lazy(() => import("./pages/Contatti"));
 const Login = lazy(() => import("./pages/Login"));
+const SetPassword = lazy(() => import("./pages/SetPassword"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const UserManagement = lazy(() => import("./pages/admin/UserManagement"));
+const NewUserManagementPage = lazy(() => import("./pages/admin/NewUserManagementPage"));
 const ClientDetailPage = lazy(() => import("./pages/admin/ClientDetailPage"));
 const ClientVolumePage = lazy(() => import("./pages/coaching/ClientVolumePage"));
 const SubscriptionManagement = lazy(() => import("./pages/admin/SubscriptionManagement"));
@@ -41,10 +47,10 @@ const CoachCalendarPage = lazy(() => import("./pages/coach/CoachCalendarPage"));
 const CoachReportsPage = lazy(() => import("./pages/coach/CoachReportsPage"));
 
 const PalestraDashboard = lazy(() => import("./pages/cliente/PalestraDashboard"));
-const CoachingDashboard = lazy(() => import("./pages/cliente/CoachingDashboard"));
+const MobileCoachingHome = lazy(() => import("./pages/cliente/MobileCoachingHome"));
 const WorkoutPlanPage = lazy(() => import("./pages/cliente/WorkoutPlanPage"));
 const WorkoutArchivePage = lazy(() => import("./pages/cliente/WorkoutArchivePage"));
-const ReportIssuePage = lazy(() => import("./pages/cliente/ReportIssuePage"));
+const ReportProblemPage = lazy(() => import("./pages/cliente/ReportProblemPage"));
 const ProgressPage = lazy(() => import("./pages/cliente/ProgressPage"));
 const AppointmentsPage = lazy(() => import("./pages/cliente/AppointmentsPage"));
 const DocumentsPage = lazy(() => import("./pages/cliente/DocumentsPage"));
@@ -59,6 +65,14 @@ const queryClient = new QueryClient({
   },
 });
 
+/** Sul sito la home è la pagina pubblica; nell'app installata si entra subito nell'area personale. */
+const AppEntry = () => {
+  const { isAuthenticated, loading, profile } = useAuth();
+  if (!Capacitor.isNativePlatform()) return <Index />;
+  if (loading) return <PageLoader />;
+  return <Navigate to={isAuthenticated ? (readNavigation(profile?.user_id)?.path ?? "/dashboard") : "/login"} replace />;
+};
+
 interface AppRoute {
   path: string;
   element: ReactNode;
@@ -72,16 +86,17 @@ const palestraRoles: UserRole[] = ["cliente_palestra", "cliente_corso"];
 const coachingRoles: UserRole[] = ["cliente_coaching"];
 
 const publicRoutes: AppRoute[] = [
-  { path: "/", element: <Index /> },
+  { path: "/", element: <AppEntry /> },
   { path: "/contatti", element: <Contatti /> },
   { path: "/login", element: <Login /> },
+  { path: "/set-password", element: <SetPassword /> },
 ];
 
 const protectedRoutes: AppRoute[] = [
   { path: "/dashboard", element: <Dashboard /> },
   { path: "/admin", element: <AdminDashboard />, allowedRoles: adminOnly },
   { path: "/admin/utenti", element: <UserManagement />, allowedRoles: adminOnly },
-  { path: "/admin/utenti/nuovo", element: <UserManagement />, allowedRoles: adminOnly },
+  { path: "/admin/utenti/nuovo", element: <NewUserManagementPage />, allowedRoles: adminOnly },
   { path: "/admin/utenti/:userId", element: <ClientDetailPage />, allowedRoles: adminOnly },
   { path: "/admin/utenti/:userId/volume-intensita", element: <ClientVolumePage />, allowedRoles: adminOnly },
   { path: "/admin/utenti/:userId/scheda/nuova", element: <WorkoutPlanEditor />, allowedRoles: adminOnly },
@@ -106,15 +121,15 @@ const protectedRoutes: AppRoute[] = [
   { path: "/coach/*", element: <CoachDashboard />, allowedRoles: coachRoles },
   { path: "/palestra", element: <PalestraDashboard />, allowedRoles: palestraRoles },
   { path: "/palestra/*", element: <PalestraDashboard />, allowedRoles: palestraRoles },
-  { path: "/coaching", element: <CoachingDashboard />, allowedRoles: coachingRoles },
+  { path: "/coaching", element: <MobileCoachingHome />, allowedRoles: coachingRoles },
   { path: "/coaching/scheda", element: <WorkoutPlanPage />, allowedRoles: coachingRoles },
   { path: "/coaching/scheda/:dayId", element: <WorkoutPlanPage />, allowedRoles: coachingRoles },
   { path: "/coaching/archivio", element: <WorkoutArchivePage />, allowedRoles: coachingRoles },
   { path: "/coaching/progressi", element: <ProgressPage />, allowedRoles: coachingRoles },
   { path: "/coaching/appuntamenti", element: <AppointmentsPage />, allowedRoles: coachingRoles },
-  { path: "/coaching/segnala", element: <ReportIssuePage />, allowedRoles: coachingRoles },
+  { path: "/coaching/segnala", element: <ReportProblemPage />, allowedRoles: coachingRoles },
   { path: "/coaching/documenti", element: <DocumentsPage />, allowedRoles: coachingRoles },
-  { path: "/coaching/*", element: <CoachingDashboard />, allowedRoles: coachingRoles },
+  { path: "/coaching/*", element: <MobileCoachingHome />, allowedRoles: coachingRoles },
 ];
 
 const renderProtectedRoute = ({ path, element, allowedRoles }: AppRoute) => (
@@ -132,6 +147,8 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <NavigationMemory />
+          <NotificationRouter />
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {publicRoutes.map(({ path, element }) => (

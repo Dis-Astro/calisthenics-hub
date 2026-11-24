@@ -12,13 +12,13 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
-  const { user, profile, loading } = useAuth();
+  const { isAuthenticated, profile, loading } = useAuth();
 
   if (loading) {
     return <PageLoader />;
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 

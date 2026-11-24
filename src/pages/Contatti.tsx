@@ -6,6 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { z } from "zod";
+import {
+  buildContactMailto,
+  GOAL_LABELS,
+  GYM_EMAIL,
+  GYM_PHONE_DISPLAY,
+  telHref,
+  whatsappHref,
+} from "@/lib/contactRequest";
 
 const contactSchema = z.object({
   nome: z.string().trim().min(1, "Il nome è obbligatorio").max(100, "Nome troppo lungo"),
@@ -26,8 +34,8 @@ const Contatti = () => {
     messaggio: "",
   });
   const [errors, setErrors] = useState<Partial<Record<keyof ContactFormData, string>>>({});
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Link email preparato: resta visibile se l'app email non si è aperta da sola.
+  const [mailtoHref, setMailtoHref] = useState<string | null>(null);
 
   const handleChange = (field: keyof ContactFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -36,9 +44,8 @@ const Contatti = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     const result = contactSchema.safeParse(formData);
     
@@ -50,18 +57,14 @@ const Contatti = () => {
         }
       });
       setErrors(fieldErrors);
-      setIsSubmitting(false);
       return;
     }
 
-    // Simulate form submission
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsSubmitted(true);
-    setIsSubmitting(false);
+    // Nessun server: la richiesta parte dall'app email del cliente, già compilata.
+    const href = buildContactMailto(result.data as Required<ContactFormData>);
+    setMailtoHref(href);
+    window.location.href = href;
   };
-
-  const whatsappNumber = "+393484157414";
-  const whatsappMessage = encodeURIComponent("Ciao! Vorrei informazioni sulla palestra.");
 
   return (
     <div className="page-container">
@@ -81,7 +84,7 @@ const Contatti = () => {
             INFO & CONTATTI
           </h1>
           <p className="text-lg text-muted-foreground font-body leading-relaxed max-w-2xl">
-            Palestra Calisthenics è il tuo punto di riferimento per l'allenamento a corpo libero. 
+            Super Power Gym è il tuo punto di riferimento per l'allenamento a corpo libero. 
             Offriamo corsi per tutti i livelli, dal principiante all'atleta avanzato, 
             in un ambiente moderno e attrezzato.
           </p>
@@ -99,8 +102,8 @@ const Contatti = () => {
                 </div>
                 <div>
                   <h3 className="font-display text-lg text-foreground">Telefono</h3>
-                  <a href="tel:+393331234567" className="text-muted-foreground hover:text-primary transition-colors">
-                    +39 348 415 7414
+                  <a href={telHref()} className="text-muted-foreground hover:text-primary transition-colors">
+                    {GYM_PHONE_DISPLAY}
                   </a>
                 </div>
               </div>
@@ -111,8 +114,8 @@ const Contatti = () => {
                 </div>
                 <div>
                   <h3 className="font-display text-lg text-foreground">Email</h3>
-                  <a href="mailto:mariano@superpowergym.it" className="text-muted-foreground hover:text-primary transition-colors">
-                    mariano@superpowergym.it
+                  <a href={`mailto:${GYM_EMAIL}`} className="text-muted-foreground hover:text-primary transition-colors">
+                    {GYM_EMAIL}
                   </a>
                 </div>
               </div>
@@ -147,7 +150,7 @@ const Contatti = () => {
 
             {/* WhatsApp Button */}
             <a
-              href={`https://wa.me/${whatsappNumber}?text=${whatsappMessage}`}
+              href={whatsappHref("Ciao! Vorrei informazioni sulla palestra.")}
               target="_blank"
               rel="noopener noreferrer"
               className="whatsapp-button"
@@ -161,16 +164,30 @@ const Contatti = () => {
           <section className="animate-fade-in" style={{ animationDelay: '0.2s' }}>
             <h2 className="font-display text-2xl tracking-wider text-foreground mb-6">RICHIEDI INFORMAZIONI</h2>
             
-            {isSubmitted ? (
-              <div className="form-container text-center py-12 animate-scale-in">
+            {mailtoHref ? (
+              <div className="form-container text-center py-12 animate-scale-in" role="status">
                 <div className="flex justify-center mb-4">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-success/20">
                     <CheckCircle className="h-8 w-8 text-success" />
                   </div>
                 </div>
-                <h3 className="font-display text-2xl text-foreground mb-2">RICHIESTA INVIATA</h3>
-                <p className="text-muted-foreground">
-                  Ti risponderemo il prima possibile.
+                <h3 className="font-display text-2xl text-foreground mb-2">EMAIL PRONTA</h3>
+                <p className="text-muted-foreground mb-6">
+                  Abbiamo preparato il messaggio nella tua app email: premi <strong>Invia</strong> per completare la richiesta.
+                </p>
+                <div className="flex flex-col gap-3">
+                  <Button asChild className="w-full font-display tracking-wider">
+                    <a href={mailtoHref}>APRI DI NUOVO L&apos;EMAIL</a>
+                  </Button>
+                  <Button variant="outline" className="w-full" onClick={() => setMailtoHref(null)}>
+                    Modifica i dati
+                  </Button>
+                </div>
+                <p className="mt-6 text-sm text-muted-foreground">
+                  Non si apre nulla? Scrivi a{" "}
+                  <a href={`mailto:${GYM_EMAIL}`} className="text-primary underline-offset-4 hover:underline">{GYM_EMAIL}</a>
+                  {" "}o chiama il{" "}
+                  <a href={telHref()} className="text-primary underline-offset-4 hover:underline">{GYM_PHONE_DISPLAY}</a>.
                 </p>
               </div>
             ) : (
@@ -182,6 +199,7 @@ const Contatti = () => {
                   <Input
                     id="nome"
                     type="text"
+                    autoComplete="name"
                     value={formData.nome}
                     onChange={(e) => handleChange("nome", e.target.value)}
                     className={errors.nome ? "border-destructive" : ""}
@@ -197,6 +215,7 @@ const Contatti = () => {
                   <Input
                     id="email"
                     type="email"
+                    autoComplete="email"
                     value={formData.email}
                     onChange={(e) => handleChange("email", e.target.value)}
                     className={errors.email ? "border-destructive" : ""}
@@ -212,6 +231,7 @@ const Contatti = () => {
                   <Input
                     id="telefono"
                     type="tel"
+                    autoComplete="tel"
                     value={formData.telefono}
                     onChange={(e) => handleChange("telefono", e.target.value)}
                     className={errors.telefono ? "border-destructive" : ""}
@@ -225,15 +245,13 @@ const Contatti = () => {
                     Obiettivo *
                   </label>
                   <Select value={formData.obiettivo} onValueChange={(value) => handleChange("obiettivo", value)}>
-                    <SelectTrigger className={errors.obiettivo ? "border-destructive" : ""}>
+                    <SelectTrigger id="obiettivo" className={errors.obiettivo ? "border-destructive" : ""}>
                       <SelectValue placeholder="Seleziona il tuo obiettivo" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="iniziare">Iniziare il calisthenics</SelectItem>
-                      <SelectItem value="migliorare">Migliorare le mie skills</SelectItem>
-                      <SelectItem value="dimagrire">Dimagrire e tonificare</SelectItem>
-                      <SelectItem value="forza">Aumentare la forza</SelectItem>
-                      <SelectItem value="altro">Altro</SelectItem>
+                      {Object.entries(GOAL_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   {errors.obiettivo && <p className="mt-1 text-sm text-destructive">{errors.obiettivo}</p>}
@@ -254,13 +272,15 @@ const Contatti = () => {
                   {errors.messaggio && <p className="mt-1 text-sm text-destructive">{errors.messaggio}</p>}
                 </div>
 
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full font-display text-lg tracking-wider"
-                  disabled={isSubmitting}
                 >
-                  {isSubmitting ? "INVIO IN CORSO..." : "INVIA RICHIESTA"}
+                  PREPARA EMAIL
                 </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Si aprirà la tua app email con il messaggio già compilato per {GYM_EMAIL}.
+                </p>
               </form>
             )}
           </section>

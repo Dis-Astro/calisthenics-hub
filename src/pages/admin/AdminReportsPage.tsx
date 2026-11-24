@@ -89,6 +89,25 @@ interface WeekFeedback {
 
 const PAGE_SIZE = 1000;
 const IN_CHUNK_SIZE = 150;
+const READ_RETRY_DELAYS_MS = [350, 900];
+
+async function withReadRetry<T>(operation: () => PromiseLike<T>, signal: AbortSignal): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= READ_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (signal.aborted) throw error;
+      lastError = error;
+      const delay = READ_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) break;
+      await new Promise((resolve) => window.setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
 
 const hasFeedback = (completion: { client_notes: string | null; difficulty_rating: number | null }) =>
   Boolean(completion.client_notes?.trim()) || (completion.difficulty_rating || 0) > 0;
@@ -109,18 +128,22 @@ const getPlanTotalWeeks = (startDate: string, endDate: string) => {
 const isValidPlanWeek = (weekNumber: number | null, plan: { start_date: string; end_date: string }) =>
   Boolean(weekNumber && weekNumber >= 1 && weekNumber <= getPlanTotalWeeks(plan.start_date, plan.end_date));
 
-async function fetchAllFeedbackCompletions() {
+async function fetchAllFeedbackCompletions(signal: AbortSignal) {
   const rows: any[] = [];
   let from = 0;
 
   while (true) {
-    const { data, error } = await supabase
-      .from("workout_completions")
-      .select("id, client_id, workout_plan_exercise_id, completed_at, client_notes, difficulty_rating, set_number")
-      .order("completed_at", { ascending: false })
-      .range(from, from + PAGE_SIZE - 1);
-
-    if (error) throw error;
+    const { data } = await withReadRetry(async () => {
+      const result = await supabase
+        .from("workout_completions")
+        .select("id, client_id, workout_plan_exercise_id, completed_at, client_notes, difficulty_rating, set_number")
+        .or("client_notes.not.is.null,difficulty_rating.gt.0")
+        .order("completed_at", { ascending: false })
+        .range(from, from + PAGE_SIZE - 1)
+        .abortSignal(signal);
+      if (result.error) throw result.error;
+      return result;
+    }, signal);
     const batch = data || [];
     rows.push(...batch.filter(hasFeedback));
     if (batch.length < PAGE_SIZE) break;
@@ -130,17 +153,21 @@ async function fetchAllFeedbackCompletions() {
   return rows;
 }
 
-async function fetchInChunks(table: "workout_plan_exercises" | "workout_plans" | "profiles", select: string, column: string, ids: string[]) {
+async function fetchInChunks(table: "workout_plan_exercises" | "workout_plans" | "profiles", select: string, column: string, ids: string[], signal: AbortSignal) {
   const uniqueIds = [...new Set(ids)].filter(Boolean);
   const rows: any[] = [];
 
   for (let i = 0; i < uniqueIds.length; i += IN_CHUNK_SIZE) {
     const chunk = uniqueIds.slice(i, i + IN_CHUNK_SIZE);
-    const { data, error } = await (supabase.from(table) as any)
-      .select(select)
-      .in(column, chunk);
-
-    if (error) throw error;
+    const result = await withReadRetry(async () => {
+      const response = await (supabase.from(table) as any)
+        .select(select)
+        .in(column, chunk)
+        .abortSignal(signal);
+      if (response.error) throw response.error;
+      return response;
+    }, signal);
+    const { data } = result as { data: any[] | null; error: Error | null };
     rows.push(...(data || []));
   }
 
@@ -170,13 +197,15 @@ const AdminReportsPage = () => {
   }, [clients, searchQuery]);
 
   useEffect(() => {
-    fetchClients();
+    const controller = new AbortController();
+    fetchClients(controller.signal);
+    return () => controller.abort();
   }, []);
 
-  const fetchClients = async () => {
+  const fetchClients = async (signal: AbortSignal) => {
     setLoading(true);
     try {
-      const completions = await fetchAllFeedbackCompletions();
+      const completions = await fetchAllFeedbackCompletions(signal);
 
       if (completions.length === 0) {
         setClients([]);
@@ -187,16 +216,18 @@ const AdminReportsPage = () => {
         "workout_plan_exercises",
         "id, workout_plan_id",
         "id",
-        completions.map(c => c.workout_plan_exercise_id)
+        completions.map(c => c.workout_plan_exercise_id),
+        signal
       );
       const plans = (await fetchInChunks(
         "workout_plans",
         "id, name, client_id, coach_id, start_date, end_date, deleted_at",
         "id",
-        exercises.map(e => e.workout_plan_id)
+        exercises.map(e => e.workout_plan_id),
+        signal
       )).filter(p => !p.deleted_at);
       const clientIds = [...new Set(plans.map(p => p.client_id))];
-      const profiles = await fetchInChunks("profiles", "user_id, first_name, last_name", "user_id", clientIds);
+      const profiles = await fetchInChunks("profiles", "user_id, first_name, last_name", "user_id", clientIds, signal);
 
     const userMap = new Map(profiles?.map(p => [p.user_id, `${p.first_name} ${p.last_name}`]) || []);
     const exercisePlanMap = new Map(exercises.map(e => [e.id, e.workout_plan_id]));
@@ -239,11 +270,13 @@ const AdminReportsPage = () => {
 
     setClients(Array.from(clientMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
     } catch (error) {
+      if (signal.aborted) return;
       console.error("Errore caricamento feedback clienti", error);
       toast({ title: "Errore", description: "Impossibile caricare i feedback clienti", variant: "destructive" });
       setClients([]);
+    } finally {
+      if (!signal.aborted) setLoading(false);
     }
-    setLoading(false);
   };
 
   const fetchClientPlans = async (clientId: string) => {
