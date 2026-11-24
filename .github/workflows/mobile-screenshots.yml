@@ -27,7 +27,8 @@ permissions:
 jobs:
   capture-client:
     name: Capture authenticated client iPhone screens
-    runs-on: ubuntu-latest
+    # Playwright 1.55 non supporta WebKit su ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       VITE_SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID || 'fyrzzuswjgtwoctovker' }}
@@ -55,15 +56,29 @@ jobs:
       - name: Test offline synchronization logic
         run: npm test -- src/lib/offlineSync.test.ts
 
+      - name: Check E2E credentials
+        id: creds
+        shell: bash
+        run: |
+          if [ -n "$E2E_EMAIL" ] && [ -n "$E2E_PASSWORD" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Credenziali E2E non configurate nei secret: schermate autenticate saltate."
+          fi
+
       - name: Install Playwright and WebKit
+        if: steps.creds.outputs.ok == 'true'
         run: |
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps webkit
 
       - name: Build application
+        if: steps.creds.outputs.ok == 'true'
         run: npm run build
 
       - name: Start preview server
+        if: steps.creds.outputs.ok == 'true'
         shell: bash
         run: |
           mkdir -p build/mobile-screenshots
@@ -79,10 +94,11 @@ jobs:
           exit 1
 
       - name: Capture client screens
+        if: steps.creds.outputs.ok == 'true'
         run: node scripts/capture-mobile-pages.mjs
 
       - name: Upload client screenshots and report
-        if: always()
+        if: always() && steps.creds.outputs.ok == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: super-power-gym-client-screenshots
@@ -94,7 +110,8 @@ jobs:
 
   capture-admin:
     name: Capture authenticated admin iPhone screens
-    runs-on: ubuntu-latest
+    # Playwright 1.55 non supporta WebKit su ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       VITE_SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID || 'fyrzzuswjgtwoctovker' }}
@@ -123,15 +140,29 @@ jobs:
       - name: Test offline synchronization logic
         run: npm test -- src/lib/offlineSync.test.ts
 
+      - name: Check E2E credentials
+        id: creds
+        shell: bash
+        run: |
+          if [ -n "$E2E_EMAIL" ] && [ -n "$E2E_PASSWORD" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Credenziali E2E non configurate nei secret: schermate autenticate saltate."
+          fi
+
       - name: Install Playwright and WebKit
+        if: steps.creds.outputs.ok == 'true'
         run: |
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps webkit
 
       - name: Build application
+        if: steps.creds.outputs.ok == 'true'
         run: npm run build
 
       - name: Start preview server
+        if: steps.creds.outputs.ok == 'true'
         shell: bash
         run: |
           mkdir -p build/admin-screenshots
@@ -147,10 +178,11 @@ jobs:
           exit 1
 
       - name: Capture and validate admin screens
+        if: steps.creds.outputs.ok == 'true'
         run: node scripts/capture-mobile-pages.mjs
 
       - name: Upload admin screenshots and report
-        if: always()
+        if: always() && steps.creds.outputs.ok == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: super-power-gym-admin-screenshots
