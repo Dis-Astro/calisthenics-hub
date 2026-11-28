@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WorkoutPlanReferencePanel from "./WorkoutPlanReferencePanel";
 
 vi.mock("@/components/admin/VolumeIntensityTable", () => ({
-  default: ({ clientId, compact }: { clientId: string; compact?: boolean }) => {
+  default: function VolumeIntensityTableMock({ clientId, compact }: { clientId: string; compact?: boolean }) {
     const [draft, setDraft] = useState("");
     return <div aria-label={`Volume di ${clientId}`}>
       <span>{compact ? "Vista compatta" : "Vista completa"}</span>
