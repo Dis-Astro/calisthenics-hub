@@ -8,9 +8,10 @@ interface Props {
   clientId: string;
   testSelector?: ReactNode;
   children: ReactNode;
+  onCompactTargetChange?: (target: HTMLDivElement | null) => void;
 }
 
-const WorkoutPlanReferencePanel = ({ clientId, testSelector, children }: Props) => {
+const WorkoutPlanReferencePanel = ({ clientId, testSelector, children, onCompactTargetChange }: Props) => {
   const panelId = useId();
   const [showVolume, setShowVolume] = useState(false);
   const [volumeOpened, setVolumeOpened] = useState(false);
@@ -39,7 +40,9 @@ const WorkoutPlanReferencePanel = ({ clientId, testSelector, children }: Props) 
         {/* Keep drafts and pending autosaves alive when returning to Test & Note. */}
         {volumeOpened && (
           <div hidden={!showVolume}>
-            <VolumeIntensityTable clientId={clientId} compact />
+            {onCompactTargetChange
+              ? <div ref={onCompactTargetChange} />
+              : <VolumeIntensityTable clientId={clientId} compact />}
           </div>
         )}
       </CardContent>

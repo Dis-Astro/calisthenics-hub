@@ -29,16 +29,18 @@ import {
 } from "@/components/ui/alert-dialog";
 import ExerciseNameInput from "@/components/admin/ExerciseNameInput";
 import WorkoutPlanReferencePanel from "@/components/admin/WorkoutPlanReferencePanel";
+import VolumeIntensityTable from "@/components/admin/VolumeIntensityTable";
 import LightningRating from "@/components/coaching/LightningRating";
 import { Slider } from "@/components/ui/slider";
 import { 
   Loader2, Plus, Trash2, ArrowLeft, Dumbbell, Save,
-  ChevronDown, ChevronUp, FileText, ClipboardList, Pause, Play, CheckCircle, Bell
+  ChevronDown, ChevronUp, FileText, ClipboardList, Pause, Play, CheckCircle, Bell, BarChart3, Copy
 } from "lucide-react";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { syncTestReminderAppointment } from "@/lib/testReminder";
 import { ColoredKeywordText } from "@/components/shared/ColoredKeywordText";
+import { copyExerciseText } from "@/lib/copyExerciseText";
 
 // ─── Types ───
 interface DayExercise {
@@ -62,6 +64,7 @@ interface PreviousPlan {
   status: string;
   coach_notes: string | null;
   description: string | null;
+  plan_type?: string;
   exercises: { id: string; exercise_name: string | null; day_of_week: number | null; order_index: number }[];
   feedbacks: { exercise_id: string; week_number: number; rating: number; notes: string; completed_at: string }[];
 }
@@ -110,9 +113,14 @@ const WorkoutPlanEditor = () => {
   // Side panels
   const [allPlans, setAllPlans] = useState<PreviousPlan[]>([]);
   const [selectedLeftPlanId, setSelectedLeftPlanId] = useState<string>("");
+  const [leftView, setLeftView] = useState<"plans" | "tests">("plans");
+  const [selectedLeftTestId, setSelectedLeftTestId] = useState("");
   const [tests, setTests] = useState<TestPlan[]>([]);
   const [selectedRightTestId, setSelectedRightTestId] = useState<string>("");
   const [openFeedbackExercises, setOpenFeedbackExercises] = useState<Set<string>>(new Set());
+  const [showCenterVolume, setShowCenterVolume] = useState(false);
+  const [volumeOpened, setVolumeOpened] = useState(false);
+  const [compactVolumeTarget, setCompactVolumeTarget] = useState<HTMLDivElement | null>(null);
 
   // Mobile tab
   const [activeTab, setActiveTab] = useState("editor");
@@ -187,7 +195,7 @@ const WorkoutPlanEditor = () => {
     // Load ALL plans for this client (excluding current if editing)
     const { data: plans } = await supabase
       .from("workout_plans")
-      .select("id, name, start_date, end_date, status, coach_notes, description")
+      .select("id, name, start_date, end_date, status, coach_notes, description, plan_type")
       .eq("client_id", userId!)
       .is("deleted_at" as any, null)
       .order("created_at", { ascending: false });
@@ -235,8 +243,9 @@ const WorkoutPlanEditor = () => {
 
     setAllPlans(loadedPlans);
     // Auto-select the most recent one
-    if (!selectedLeftPlanId || !loadedPlans.find(p => p.id === selectedLeftPlanId)) {
-      setSelectedLeftPlanId(loadedPlans[0].id);
+    const availableWorkouts = loadedPlans.filter(plan => plan.plan_type !== "test");
+    if (!selectedLeftPlanId || !availableWorkouts.find(p => p.id === selectedLeftPlanId)) {
+      setSelectedLeftPlanId(availableWorkouts[0]?.id ?? "");
     }
   };
 
@@ -286,6 +295,9 @@ const WorkoutPlanEditor = () => {
     // Auto-select the most recent test
     if (!selectedRightTestId || !loadedTests.find((t: any) => t.id === selectedRightTestId)) {
       setSelectedRightTestId(loadedTests[0].id);
+    }
+    if (!selectedLeftTestId || !loadedTests.find((t: TestPlan) => t.id === selectedLeftTestId)) {
+      setSelectedLeftTestId(loadedTests[0].id);
     }
   };
 
@@ -509,10 +521,26 @@ const WorkoutPlanEditor = () => {
   };
 
   // ─── Render Left Panel: Previous Plan + Feedback ───
-  const previousPlan = allPlans.find(p => p.id === selectedLeftPlanId) || null;
+  const workoutPlans = allPlans.filter(plan => plan.plan_type !== "test");
+  const previousPlan = workoutPlans.find(p => p.id === selectedLeftPlanId) || null;
+
+  const copyExercise = async (text: string) => {
+    const copied = await copyExerciseText(text);
+    toast(copied
+      ? { title: "Esercizio copiato" }
+      : { title: "Copia non riuscita", description: "Seleziona e copia il testo dell'esercizio.", variant: "destructive" });
+  };
+
+  const renderCopyExercise = (text: string | null, index: number, context: string) => text ? (
+    <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0"
+      aria-label={`Copia esercizio ${index + 1} (${context})`} title="Copia testo esercizio"
+      onClick={() => void copyExercise(text)}>
+      <Copy className="h-3.5 w-3.5" />
+    </Button>
+  ) : null;
 
   const renderPreviousPlan = () => {
-    if (allPlans.length === 0) {
+    if (workoutPlans.length === 0) {
       return (
         <div className="text-center py-12 text-muted-foreground">
           <ClipboardList className="w-12 h-12 mx-auto mb-4 opacity-30" />
@@ -557,20 +585,23 @@ const WorkoutPlanEditor = () => {
 
                 return (
                   <Collapsible key={ex.id} open={isOpen} onOpenChange={() => hasFeedback && toggleFeedbackExercise(ex.id)}>
-                    <CollapsibleTrigger className="w-full" disabled={!hasFeedback}>
-                      <div className={`px-3 py-2 flex items-center justify-between text-left ${hasFeedback ? 'hover:bg-muted/30 cursor-pointer' : ''}`}>
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium flex-shrink-0">{idx + 1}</span>
-                          <p className="text-xs whitespace-pre-wrap">{ex.exercise_name ? <ColoredKeywordText text={ex.exercise_name} /> : "Esercizio"}</p>
-                        </div>
-                        {hasFeedback && (
-                          <div className="flex items-center gap-1">
-                            <Badge variant="secondary" className="text-[10px] h-5">{feedbacks.length}fb</Badge>
-                            {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    <div className="flex items-start pr-1">
+                      <CollapsibleTrigger className="min-w-0 flex-1" disabled={!hasFeedback}>
+                        <div className={`px-3 py-2 flex items-center justify-between text-left ${hasFeedback ? 'hover:bg-muted/30 cursor-pointer' : ''}`}>
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] flex items-center justify-center font-medium flex-shrink-0">{idx + 1}</span>
+                            <p className="min-w-0 break-words text-xs whitespace-pre-wrap">{ex.exercise_name ? <ColoredKeywordText text={ex.exercise_name} /> : "Esercizio"}</p>
                           </div>
-                        )}
-                      </div>
-                    </CollapsibleTrigger>
+                          {hasFeedback && (
+                            <div className="flex items-center gap-1">
+                              <Badge variant="secondary" className="text-[10px] h-5">{feedbacks.length}fb</Badge>
+                              {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            </div>
+                          )}
+                        </div>
+                      </CollapsibleTrigger>
+                      {renderCopyExercise(ex.exercise_name, idx, "scheda laterale")}
+                    </div>
                     {hasFeedback && (
                       <CollapsibleContent>
                         <div className="px-3 pb-2 divide-y divide-border/40 border border-border/40 rounded bg-muted/10">
@@ -603,28 +634,26 @@ const WorkoutPlanEditor = () => {
   // ─── Render Right Panel: Selected Test ───
   const selectedTest = tests.find(t => t.id === selectedRightTestId) || null;
 
-  const renderTests = () => {
+  const renderTests = (test: TestPlan | null = selectedTest, context: "right" | "left" = "right") => {
     if (tests.length === 0) {
       return (
         <div className="text-center py-12 text-muted-foreground">
           <FileText className="w-12 h-12 mx-auto mb-4 opacity-30" />
           <p className="font-medium">Nessun test disponibile</p>
           <p className="text-sm mt-1">Crea il primo test per questo cliente</p>
-          <Button
+          {context === "right" && <Button
             variant="outline"
             size="sm"
             className="mt-4 gap-2"
             onClick={() => navigate(`/admin/utenti/${userId}/scheda/nuova?type=test`)}
           >
             <Plus className="w-3 h-3" /> Crea Test
-          </Button>
+          </Button>}
         </div>
       );
     }
 
-    if (!selectedTest) return null;
-
-    const test = selectedTest;
+    if (!test) return null;
     const exercisesByDay = test.exercises.reduce((acc, ex) => {
       const day = ex.day_of_week || 1;
       if (!acc[day]) acc[day] = [];
@@ -655,24 +684,28 @@ const WorkoutPlanEditor = () => {
             {exs.map((ex, idx) => {
               const coachNote = test.coachTestNotes.get(ex.id);
               const hasNote = !!(coachNote?.note || coachNote?.rating);
-              const isOpen = openFeedbackExercises.has(`test-${ex.id}`);
+              const feedbackKey = `test-${context}-${ex.id}`;
+              const isOpen = openFeedbackExercises.has(feedbackKey);
 
               return (
-                <Collapsible key={ex.id} open={isOpen} onOpenChange={() => toggleFeedbackExercise(`test-${ex.id}`)}>
-                  <CollapsibleTrigger className="w-full">
-                    <div className={`px-2 py-1.5 rounded flex items-center justify-between text-left hover:bg-muted/30 transition-colors ${hasNote ? 'bg-accent/50' : ''}`}>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-muted-foreground text-xs">{idx + 1}.</span>
-                        <p className="text-xs truncate whitespace-pre-wrap">
-                          {ex.exercise_name ? <ColoredKeywordText text={ex.exercise_name} /> : "Esercizio"}
-                        </p>
+                <Collapsible key={ex.id} open={isOpen} onOpenChange={() => toggleFeedbackExercise(feedbackKey)}>
+                  <div className="flex items-start">
+                    <CollapsibleTrigger className="min-w-0 flex-1">
+                      <div className={`px-2 py-1.5 rounded flex items-center justify-between text-left hover:bg-muted/30 transition-colors ${hasNote ? 'bg-accent/50' : ''}`}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-muted-foreground text-xs">{idx + 1}.</span>
+                          <p className="min-w-0 break-words text-xs whitespace-pre-wrap">
+                            {ex.exercise_name ? <ColoredKeywordText text={ex.exercise_name} /> : "Esercizio"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {hasNote && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                          {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {hasNote && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
-                        {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                      </div>
-                    </div>
-                  </CollapsibleTrigger>
+                    </CollapsibleTrigger>
+                    {renderCopyExercise(ex.exercise_name, idx, context === "left" ? "test laterale" : "Test & Note")}
+                  </div>
                   <CollapsibleContent>
                     <div className="px-2 pb-2 ml-5">
                       {coachNote?.rating ? (
@@ -862,9 +895,9 @@ const WorkoutPlanEditor = () => {
     : (isTest ? `Nuovo Test — ${clientName}` : `Nuova Scheda — ${clientName}`);
 
   const referencePanel = userId ? (
-    <WorkoutPlanReferencePanel clientId={userId} testSelector={tests.length > 0 ? (
+    <WorkoutPlanReferencePanel clientId={userId} onCompactTargetChange={setCompactVolumeTarget} testSelector={tests.length > 0 ? (
       <Select value={selectedRightTestId} onValueChange={setSelectedRightTestId}>
-        <SelectTrigger className="h-7 text-xs">
+        <SelectTrigger className="h-7 text-xs" aria-label="Seleziona test Test & Note">
           <SelectValue placeholder="Seleziona test..." />
         </SelectTrigger>
         <SelectContent>
@@ -902,13 +935,19 @@ const WorkoutPlanEditor = () => {
                   <ClipboardList className="w-4 h-4 text-primary" />
                   Scheda Laterale
                 </h3>
-                {allPlans.length > 0 && (
+                <div className="grid grid-cols-2 gap-1" role="group" aria-label="Riferimento laterale">
+                  <Button type="button" size="sm" variant={leftView === "plans" ? "secondary" : "ghost"}
+                    aria-pressed={leftView === "plans"} className="h-7 text-xs" onClick={() => setLeftView("plans")}>Schede</Button>
+                  <Button type="button" size="sm" variant={leftView === "tests" ? "secondary" : "ghost"}
+                    aria-pressed={leftView === "tests"} className="h-7 text-xs" onClick={() => setLeftView("tests")}>Test</Button>
+                </div>
+                {leftView === "plans" && workoutPlans.length > 0 && (
                   <Select value={selectedLeftPlanId} onValueChange={setSelectedLeftPlanId}>
-                    <SelectTrigger className="h-7 text-xs">
+                    <SelectTrigger className="h-7 text-xs" aria-label="Seleziona scheda laterale">
                       <SelectValue placeholder="Seleziona scheda..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {allPlans.map(p => (
+                      {workoutPlans.map(p => (
                         <SelectItem key={p.id} value={p.id} className="text-xs">
                           {p.name} — {format(new Date(p.start_date), "d MMM yy", { locale: it })}
                         </SelectItem>
@@ -916,9 +955,24 @@ const WorkoutPlanEditor = () => {
                     </SelectContent>
                   </Select>
                 )}
+                {leftView === "tests" && tests.length > 0 && (
+                  <Select value={selectedLeftTestId} onValueChange={setSelectedLeftTestId}>
+                    <SelectTrigger className="h-7 text-xs" aria-label="Seleziona test laterale">
+                      <SelectValue placeholder="Seleziona test..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tests.map(test => (
+                        <SelectItem key={test.id} value={test.id} className="text-xs">
+                          {test.name} — {format(new Date(test.start_date), "d MMM yy", { locale: it })}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <CardContent className="p-3 max-h-[calc(100vh-260px)] overflow-y-auto">
-                {renderPreviousPlan()}
+                <div hidden={leftView !== "plans"}>{renderPreviousPlan()}</div>
+                <div hidden={leftView !== "tests"}>{renderTests(tests.find(test => test.id === selectedLeftTestId) ?? null, "left")}</div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -926,14 +980,24 @@ const WorkoutPlanEditor = () => {
           {/* Center: Editor */}
           <TabsContent value="editor" forceMount className="min-w-0 data-[state=inactive]:hidden md:col-span-6 md:mt-0 md:data-[state=inactive]:block">
             <Card className="border-0 shadow-none md:border md:shadow-sm">
-              <div className="hidden border-b bg-muted px-4 py-2 md:block">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted px-4 py-2">
                 <h3 className="font-display text-sm tracking-wider flex items-center gap-2">
-                  <Dumbbell className="w-4 h-4 text-primary" />
-                  {isEditing ? (isTest ? "Modifica Test" : "Modifica Scheda") : (isTest ? "Nuovo Test" : "Nuova Scheda")}
+                  {showCenterVolume ? <BarChart3 className="w-4 h-4 text-primary" /> : <Dumbbell className="w-4 h-4 text-primary" />}
+                  {showCenterVolume ? "Volume & Intensità" : isEditing ? (isTest ? "Modifica Test" : "Modifica Scheda") : (isTest ? "Nuovo Test" : "Nuova Scheda")}
                 </h3>
+                <Button type="button" variant="outline" size="sm" className="h-auto min-h-8 whitespace-normal text-xs"
+                  onClick={() => { setVolumeOpened(true); setShowCenterVolume(previous => !previous); }}>
+                  {showCenterVolume ? <Dumbbell className="mr-2 h-3.5 w-3.5 shrink-0" /> : <BarChart3 className="mr-2 h-3.5 w-3.5 shrink-0" />}
+                  {showCenterVolume ? "Torna alla scheda" : "Volume & Intensità"}
+                </Button>
               </div>
               <CardContent className="p-0 md:max-h-[calc(100vh-220px)] md:overflow-y-auto md:p-4">
-                {renderEditor()}
+                <div hidden={showCenterVolume}>{renderEditor()}</div>
+                {userId && (volumeOpened || compactVolumeTarget) && (
+                  <div hidden={!showCenterVolume} className="p-3 md:p-0">
+                    <VolumeIntensityTable clientId={userId} compactTarget={compactVolumeTarget} showFull={showCenterVolume} />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

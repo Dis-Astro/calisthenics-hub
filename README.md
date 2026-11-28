@@ -83,12 +83,11 @@ Le tabelle sono indipendenti dalla creazione delle schede e dei test:
 - Coach: aprire **I miei clienti** e premere **Volume & Intensità** sul cliente assegnato.
 
 E' disponibile anche se il cliente non ha alcuna scheda di allenamento.
-Nell'editor di creazione e modifica delle schede, il pulsante **Mostra Volume &
-Intensità** nel pannello **Test & Note** sostituisce il contenuto del pannello con
-la vista compatta delle stesse tabelle del cliente. **Torna a Test & Note** ripristina
-i test selezionati senza azzerare la bozza della scheda. Su mobile il comando si
-trova nella scheda **Test / Volume**. Le fasce sono disposte in verticale nella
-vista compatta, con data e valore modificabili e lo stesso salvataggio automatico.
+Nell'editor, **Volume & Intensità** al centro apre la tabella orizzontale e
+conserva la bozza della scheda. A destra, **Mostra Volume & Intensità** apre
+la vista compatta delle stesse tabelle. A sinistra si alternano schede e test
+in consultazione. Il pulsante **Copia** nei due pannelli laterali copia
+direttamente il testo dell'esercizio.
 
 Prima di distribuire il frontend aggiornato, applicare al database Supabase
 dell'ambiente scelto la migrazione
@@ -98,11 +97,16 @@ La build frontend non applica le migrazioni del database.
 Le tabelle sono associate al cliente e condivise tra le sue schede e i suoi test.
 Admin e coach assegnato possono modificarle; il cliente non ha accesso.
 Le celle, compresa TOT., sono testo libero senza calcoli automatici.
-Lo storico mostra inizialmente le righe create nel giorno locale più recente.
+Le nove fasce vanno dal 10–20% al 90–100%. La data della programmazione si
+scrive nel titolo della tabella. I valori già registrati con le fasce
+precedenti conservano le etichette originali.
+Tabelle e righe più recenti compaiono in alto. Per ogni tabella, la vista
+iniziale mostra le righe del giorno locale più recente. **Mostra precedenti**
+aggiunge le righe dei giorni precedenti, se presenti.
 In caso di errore di salvataggio, mantenere aperta la pagina e usare “Riprova”.
 
 Verifica sull'ambiente di test: aprire le tabelle anche su un cliente senza schede,
-creare una tabella e una riga, modificare date
+creare una tabella e una riga, modificare il titolo
 e valori, ricaricare e verificare la persistenza; controllare lo storico,
 la conferma di eliminazione e l'accesso con admin, coach assegnato,
 coach non assegnato e cliente.
